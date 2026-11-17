@@ -2,24 +2,32 @@
  * 消息区滚动控制器：每个 `.chat-scroll` 一个实例（方案见 docs/archive/plan/scroll-controller-2026-11-14.md）。
  *
  * 它是消息区 `scrollTop` 的唯一写者：DOM 事件、ResizeObserver / MutationObserver、rAF 都绑在这里，
- * 组件只发意图（open / follow …）并订阅结论。是否贴底、这次 scroll 事件是谁引起的，全部按
- * 纯函数 `chatScroll.ts` 的写入记账（write ledger）判定，不用时间窗。
+ * 组件只发意图（open / follow / jump / beginAnchor …）并订阅结论。是否贴底、这次 scroll 事件是
+ * 谁引起的，全部按纯函数 `chatScroll.ts` 的写入记账（write ledger）判定，不用时间窗。
  *
- * 本步接入的是 ChatView 的贴底、跟随、上翻、回到底部、切换会话与尺寸变化；
- * 跳转（jump.ts）与 MessageList 的锚点仍是各自实现，控制器只保证不与它们抢写点。
+ * 跳转与锚点也在这里：`jump()` 自己积分弹簧、逐帧重取落点、最多复核 2 次；`beginAnchor()` /
+ * `endAnchor()` 用「插入前捕获 + 内容高度连续 2 帧不变」收尾，不用 700/1200ms 定时器。
+ * 跳转期间不写锚点（E×F），跳完再恢复；跳转结束（到达 / 超时 / 被替换）后不再写视口。
  */
 import {
   atBottom,
   classifyScroll,
   next,
+  planTeleport,
+  shouldEmitReachTop,
   showFollowButton,
   springDt,
   stepSpring,
+  targetTop,
+  type Anchor,
+  type ScrollAlign,
   type ScrollEvent,
   type ScrollSample,
   type ScrollState,
+  type ScrollTarget,
   type WriteMark,
 } from './chatScroll'
+import { settleJump } from '../jump'
 
 export type UserCause = 'wheel' | 'touch' | 'pointer' | 'key' | 'scrollbar'
 
@@ -28,12 +36,33 @@ export interface ScrollSnapshot {
   height: number
   client: number
   atBottom: boolean
+  /** 控制器累计写 scrollTop 的次数（写入记账，回归据此断言「结束后不再写」）。 */
+  writes: number
+  /** 最后一次写入的时间戳（performance.now）。 */
+  lastWriteAt: number
 }
 
-/** 视口内第一条可见行：尺寸变化后用它把画面补回原位。 */
+/** 视口内第一条可见行：尺寸变化或内容插入后用它把画面补回原位。 */
 interface TopRow {
   id: string
   offset: number
+}
+
+/** 一次跳转的弹簧积分状态；逐帧重取目标，到达后进入复核。 */
+interface JumpAnimation {
+  token: number
+  /** 目标已挂载、动画已开始；false 时等 MessageList 把目标挂上来再调用 jump。 */
+  started: boolean
+  verifying: boolean
+  verifyStable: number
+  verifyTotal: number
+  pos: number
+  vel: number
+  teleported: boolean
+  beganAt: number
+  lastWritten: number
+  /** 用户在这次跳转期间真的滚动过：动画自然结束后直接结算，不再复核重追。 */
+  userScrolled: boolean
 }
 
 export interface ChatScrollController {
@@ -51,10 +80,25 @@ export interface ChatScrollController {
   open(key: string): void
   /** D：回到底部；smooth 时由控制器逐帧弹簧，不用原生 smooth（原生中间帧无法记账）。 */
   follow(opts?: { smooth?: boolean }): void
-  /** 外部（jump.ts）即将写 scrollTop：先让出跟随，避免观察器补偿与它抢写点。 */
+  /** E：跳到某条消息 / 工具卡；目标未挂载时保持 jumping，等挂载后再调一次。 */
+  jump(target: ScrollTarget, opts: { token: number; align?: ScrollAlign }): void
+  /** 取消当前跳转（列表卸载、新 fail 场景）。 */
+  cancelJump(): void
+  /** F/G：插入内容（取段、固定轮、补缺口）前捕获锚点；following/settling/jumping 时只记下意图。 */
+  beginAnchor(): void
+  /** F/G：数据到达后允许按稳定帧收尾（锚点保留到内容高度连续 2 帧不变）。 */
+  endAnchor(): void
+  /** 外部（轮次大纲）即将跳转：先让出跟随，避免观察器补偿与跳转抢写点。 */
   yieldToJump(): void
   /** 声明这是一次用户滚动（覆盖式滚动条拖动等控制器收不到输入的场景）。 */
   notifyUserScroll(cause: UserCause): void
+
+  /** 跳转结束（到达 / 超时 / 被替换）时通知，参数为这次跳转的 token。 */
+  onJumpEnd(listener: (token: number) => void): () => void
+  /** 替代 `scrollTop < 240`：同一次停留只触发一次，离开顶部后重新武装。 */
+  onReachTop(listener: () => void): () => void
+  /** 用户自己滚到挂载窗口底部：窗口从这里回尾 / 扩展，不再按距离猜。 */
+  onReachBottom(listener: () => void): () => void
 
   snapshot(): ScrollSnapshot
   showFollowButton(): boolean
@@ -62,6 +106,13 @@ export interface ChatScrollController {
 
 const KEY_UP = new Set(['PageUp', 'ArrowUp', 'Home'])
 const KEY_DOWN = new Set(['PageDown', 'ArrowDown', 'End', ' '])
+/** 跳转一直挂不上目标（取段失败/视图已切走）时自动失效（保留原语义）。 */
+const JUMP_EXPIRE_MS = 15_000
+/** 弹簧到达后的落点复核：内容高度稳定 2 帧（或最多 12 帧）后测一次，最多 2 次复核。 */
+const VERIFY_STABLE_FRAMES = 2
+/** 锚点收尾：content-visibility 的行高会分几批变成真实值，稳定帧要留够余量。 */
+const ANCHOR_STABLE_FRAMES = 6
+const VERIFY_MAX_FRAMES = 12
 
 /** 用户最后一次滚动方向：只有它能把「滚回底部」认作恢复跟随。 */
 type ScrollIntent = 'up' | 'down' | null
@@ -73,6 +124,9 @@ class ChatScrollControllerImpl implements ChatScrollController {
   private content: HTMLElement | null = null
   private key: string | null = null
   private listeners = new Set<(state: ScrollState) => void>()
+  private jumpEndListeners = new Set<(token: number) => void>()
+  private reachTopListeners = new Set<() => void>()
+  private reachBottomListeners = new Set<() => void>()
 
   /** 上一次 scroll 事件看到的位置；只由 scroll 与我们的写入更新。 */
   private prev: ScrollSample = { top: 0, height: 0, client: 0 }
@@ -84,6 +138,9 @@ class ChatScrollControllerImpl implements ChatScrollController {
   private topRow: TopRow | null = null
   private buttonShown = false
 
+  private writes = 0
+  private lastWriteAt = 0
+
   private raf = 0
   private anchorRaf = 0
   private tempAnchor: TopRow | null = null
@@ -93,6 +150,13 @@ class ChatScrollControllerImpl implements ChatScrollController {
   private spring: { pos: number; vel: number } | null = null
   private touchStartY: number | null = null
   private scrollIntent: ScrollIntent = null
+
+  /** 有取段 / 固定轮 / 补缺口在路上：锚点保留到数据落地，稳定帧从 endAnchor 之后才计数。 */
+  private anchorRequested = false
+  private anchorStable = 0
+  private reachTopArmed = true
+  private jumpAnim: JumpAnimation | null = null
+  private jumpTimer = 0
 
   private ro: ResizeObserver | null = null
   private boxRo: ResizeObserver | null = null
@@ -116,13 +180,20 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.tempAnchor = null
     this.tempFrames = 0
     this.heightAtLastFrame = -1
+    this.reachTopArmed = true
     this.bind()
     if (this.key !== key) {
       this.open(key)
-    } else if (this.state.kind === 'following' || this.state.kind === 'settling') {
-      // 滚动区节点重新挂载（从子代理视图返回）：新节点从 0 开始，直接补到底。
-      this.writeBottom()
-      this.schedule()
+    } else {
+      if (this.state.kind === 'jumping') {
+        // 滚动区节点重新挂载（从子代理视图返回）：跳转目标按新节点重新取。
+        this.jumpAnim = null
+        this.beginJump(this.state.token, this.state.target, this.state.align)
+      } else if (this.state.kind === 'following' || this.state.kind === 'settling') {
+        // 新节点从 0 开始，直接补到底。
+        this.writeBottom()
+        this.schedule()
+      }
     }
   }
 
@@ -138,6 +209,9 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.box = null
     this.content = null
     this.listeners.clear()
+    this.jumpEndListeners.clear()
+    this.reachTopListeners.clear()
+    this.reachBottomListeners.clear()
   }
 
   private bind(): void {
@@ -187,6 +261,10 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.tempFrames = 0
     this.spring = null
     this.touchStartY = null
+    if (this.jumpTimer) window.clearTimeout(this.jumpTimer)
+    this.jumpTimer = 0
+    this.jumpAnim = null
+    this.anchorRequested = false
   }
 
   /* -------------------------------------------------------------- 意图 */
@@ -198,12 +276,42 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.tempAnchor = null
     this.tempFrames = 0
     this.spring = null
+    this.anchorRequested = false
+    this.reachTopArmed = true
+    this.jumpAnim = null
+    if (this.jumpTimer) window.clearTimeout(this.jumpTimer)
+    this.jumpTimer = 0
     this.apply({ type: 'open', key })
   }
 
   follow(opts?: { smooth?: boolean }): void {
     this.releaseTempAnchor()
     this.apply({ type: 'follow', smooth: opts?.smooth === true })
+  }
+
+  jump(target: ScrollTarget, opts: { token: number; align?: ScrollAlign }): void {
+    if (!target.messageId && !target.toolUseId) return
+    this.apply({ type: 'jump', token: opts.token, target, align: opts.align, mounted: true })
+  }
+
+  cancelJump(): void {
+    this.apply({ type: 'cancel-jump' })
+  }
+
+  beginAnchor(): void {
+    if (!this.box) return
+    this.anchorRequested = true
+    this.anchorStable = 0
+    // 锚点与临时锚点是同一个参考位置的两种实现：只留一个，避免两套补偿互相拉扯。
+    this.tempAnchor = null
+    this.tempFrames = 0
+    this.captureRequestedAnchor()
+  }
+
+  endAnchor(): void {
+    this.anchorRequested = false
+    this.anchorStable = 0
+    if (this.state.kind === 'anchoring') this.schedule()
   }
 
   yieldToJump(): void {
@@ -227,9 +335,35 @@ class ChatScrollControllerImpl implements ChatScrollController {
     }
   }
 
+  onJumpEnd(listener: (token: number) => void): () => void {
+    this.jumpEndListeners.add(listener)
+    return () => {
+      this.jumpEndListeners.delete(listener)
+    }
+  }
+
+  onReachTop(listener: () => void): () => void {
+    this.reachTopListeners.add(listener)
+    return () => {
+      this.reachTopListeners.delete(listener)
+    }
+  }
+
+  onReachBottom(listener: () => void): () => void {
+    this.reachBottomListeners.add(listener)
+    return () => {
+      this.reachBottomListeners.delete(listener)
+    }
+  }
+
   snapshot(): ScrollSnapshot {
     const view = this.sample()
-    return { ...view, atBottom: atBottom(view) }
+    return {
+      ...view,
+      atBottom: atBottom(view),
+      writes: this.writes,
+      lastWriteAt: this.lastWriteAt,
+    }
   }
 
   showFollowButton(): boolean {
@@ -251,8 +385,12 @@ class ChatScrollControllerImpl implements ChatScrollController {
       this.releaseTempAnchor()
       this.topRow = this.captureTopRow()
       const at = atBottom(sample) && this.scrollIntent === 'down'
+      this.noteUserTakeover()
       this.apply({ type: 'user-scroll', atBottom: at })
+      // 用户把挂载窗口滚到了底（不必是「恢复跟随」那种向下意图）：窗口从这里回尾/扩展。
+      if (atBottom(sample) && this.state.kind !== 'jumping') this.emit(this.reachBottomListeners)
     }
+    this.checkReachTop(sample)
     this.updateButton()
   }
 
@@ -260,7 +398,10 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (event.deltaY === 0) return
     this.scrollIntent = event.deltaY < 0 ? 'up' : 'down'
     // 上滚的提前量：浏览器真正改变位置之前就停止跟随，避免同一帧里的补底把这次上滚吃掉。
-    if (event.deltaY < 0) this.leaveFollow()
+    if (event.deltaY < 0) {
+      this.noteUserTakeover()
+      this.leaveFollow()
+    }
   }
 
   private onTouchStart = (event: TouchEvent): void => {
@@ -274,7 +415,10 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (Math.abs(at - start) < 2) return
     // 手指往下拖 = 看更早的内容；往上推 = 往更新的内容走。
     this.scrollIntent = at > start ? 'up' : 'down'
-    if (this.scrollIntent === 'up') this.leaveFollow()
+    if (this.scrollIntent === 'up') {
+      this.noteUserTakeover()
+      this.leaveFollow()
+    }
   }
 
   private onPointerDown = (event: PointerEvent): void => {
@@ -282,12 +426,14 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (event.target !== this.box) return
     // 槽内点击可能向上也可能向下，方向未知：先停跟随，不据此恢复。
     this.scrollIntent = null
+    this.noteUserTakeover()
     this.leaveFollow()
   }
 
   private onKeyDown = (event: KeyboardEvent): void => {
     if (KEY_UP.has(event.key)) {
       this.scrollIntent = 'up'
+      this.noteUserTakeover()
       this.leaveFollow()
     } else if (KEY_DOWN.has(event.key)) {
       this.scrollIntent = 'down'
@@ -302,6 +448,24 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.updateButton()
   }
 
+  /** 跳转期间用户真的滚了：动画自然走完，但结束后直接结算、不再复核把视口拉回目标。 */
+  private noteUserTakeover(): void {
+    if (this.state.kind !== 'jumping' || !this.jumpAnim) return
+    this.jumpAnim.userScrolled = true
+    // 已经到位、正在复核：用户接手即结束，不再按落点补写。
+    if (this.jumpAnim.verifying) this.apply({ type: 'cancel-jump' })
+  }
+
+  private checkReachTop(sample: ScrollSample): void {
+    const { fire, armed } = shouldEmitReachTop(this.state, sample.top, this.reachTopArmed)
+    this.reachTopArmed = armed
+    if (fire) this.emit(this.reachTopListeners)
+  }
+
+  private emit<T>(listeners: Set<(value: T) => void>, value?: T): void {
+    for (const listener of [...listeners]) listener(value as T)
+  }
+
   /* ------------------------------------------------------- 观察器 */
 
   private onContentResize(): void {
@@ -310,9 +474,16 @@ class ChatScrollControllerImpl implements ChatScrollController {
     const height = box.scrollHeight
     if (height === this.lastHeight) return
     this.lastHeight = height
-    this.apply({ type: 'content-grow' })
-    if (this.tempAnchor) {
+    if (this.state.kind === 'anchoring') {
+      const anchor = this.state.anchor
+      const found = !!anchor.messageId && this.hasRow(anchor.messageId)
+      this.apply({ type: 'content-grow', anchorFound: found })
+    } else {
+      this.apply({ type: 'content-grow' })
+    }
+    if (this.tempAnchor && this.state.kind !== 'anchoring') {
       // 尺寸变化后的重排还会持续几帧（content-visibility 换成真实高度）：临时锚点一直补到稳定。
+      // 正在按取段锚点补偿时以锚点为准，两套补偿不能同时写。
       this.compensateTempAnchor()
     } else if (this.state.kind === 'detached') {
       // 内容增高会移动视口里的首行，但滚动位置没变、不会有 scroll 事件：
@@ -338,6 +509,15 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.state = result.state
     for (const effect of result.effects) this.run(effect)
     if (previous.kind !== result.state.kind) this.notify()
+    if (previous.kind === 'jumping' && result.state.kind === 'detached') {
+      // 跳转的写入不是用户滚动：视口首行快照要按落点重取，否则之后的尺寸变化
+      // 会拿跳转前的旧首行做临时锚点，把视口拉回起点。
+      this.topRow = this.captureTopRow()
+      this.tempAnchor = null
+      this.tempFrames = 0
+    }
+    // 取段开始时还在跟随/跳转：等用户真正离开底部（或跳完转 detached）再捕获锚点。
+    if (this.anchorRequested && this.state.kind === 'detached') this.captureRequestedAnchor()
     if (this.state.kind === 'settling' || this.state.kind === 'anchoring') this.schedule()
     this.updateButton()
   }
@@ -353,8 +533,32 @@ class ChatScrollControllerImpl implements ChatScrollController {
       case 'temp-anchor':
         this.beginTempAnchor()
         break
-      default:
-        // 锚点与跳转（jump.ts）本步仍由各自实现负责。
+      case 'anchor':
+        this.compensateAnchor(effect.anchor)
+        break
+      case 'anchor-fallback':
+        this.fallbackAnchor(effect.anchor)
+        break
+      case 'drop-anchor':
+        // 只丢锚点数据；取段还在路上（anchorRequested）时，用户继续滚动会在新位置重新捕获。
+        break
+      case 'jump':
+        this.beginJump(effect.token, effect.target, effect.align)
+        break
+      case 'jump-verify':
+        this.beginJumpVerify(effect.token)
+        break
+      case 'jump-end':
+        this.finishJump(effect.token)
+        break
+      case 'need-mount':
+        // 目标未挂载：MessageList 负责取段/挪窗口，挂上后再调 jump。
+        break
+      case 'follow-exit':
+        break
+      case 'destroy':
+        this.anchorRequested = false
+        this.reachTopArmed = true
         break
     }
   }
@@ -379,6 +583,8 @@ class ChatScrollControllerImpl implements ChatScrollController {
     box.scrollTop = top
     this.mark = { top: box.scrollTop, height: box.scrollHeight, writtenAt: performance.now() }
     this.prev = this.sample()
+    this.writes += 1
+    this.lastWriteAt = performance.now()
   }
 
   private writeBottom(): void {
@@ -393,6 +599,205 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (!box) return
     this.spring = { pos: box.scrollTop, vel: 0 }
     this.schedule()
+  }
+
+  /* --------------------------------------------------------- 跳转 */
+
+  private findTargetEl(target: ScrollTarget): HTMLElement | null {
+    const root = this.content ?? this.box
+    if (!root) return null
+    if (target.toolUseId) {
+      return root.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(target.toolUseId)}"]`)
+    }
+    if (target.messageId) {
+      return root.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(target.messageId)}"]`)
+    }
+    return null
+  }
+
+  /** 目标该落的 scrollTop（每帧重取：content-visibility 的行渲染后才变成真实高度）。 */
+  private jumpGoal(el: HTMLElement, align: ScrollAlign): number {
+    const box = this.box
+    if (!box) return 0
+    const rowTop = box.scrollTop + el.getBoundingClientRect().top - box.getBoundingClientRect().top
+    return targetTop(
+      { top: rowTop, height: el.getBoundingClientRect().height },
+      { clientHeight: box.clientHeight, scrollHeight: box.scrollHeight },
+      align,
+    )
+  }
+
+  private beginJump(token: number, target: ScrollTarget, align: ScrollAlign): void {
+    const box = this.box
+    if (!box) return
+    if (this.jumpAnim?.token !== token) {
+      this.jumpAnim = {
+        token,
+        started: false,
+        verifying: false,
+        verifyStable: 0,
+        verifyTotal: 0,
+        pos: box.scrollTop,
+        vel: 0,
+        teleported: false,
+        beganAt: 0,
+        lastWritten: box.scrollTop,
+        userScrolled: false,
+      }
+    }
+    const anim = this.jumpAnim
+    if (anim && this.findTargetEl(target)) {
+      if (!anim.started) {
+        this.startJumpAnimation(anim, box)
+      } else if (anim.verifying) {
+        // 复核发现落点偏了（行高变真实值）：以当前位置再滑一次，不再重置复核次数。
+        this.startJumpAnimation(anim, box)
+      }
+      this.schedule()
+    }
+    this.armJumpExpiry(token)
+  }
+
+  private startJumpAnimation(anim: JumpAnimation, box: HTMLElement): void {
+    anim.started = true
+    anim.verifying = false
+    anim.verifyStable = 0
+    anim.verifyTotal = 0
+    anim.pos = box.scrollTop
+    anim.vel = 0
+    anim.teleported = anim.teleported && anim.pos !== 0
+    anim.beganAt = performance.now()
+    anim.lastWritten = box.scrollTop
+  }
+
+  private armJumpExpiry(token: number): void {
+    if (this.jumpTimer) window.clearTimeout(this.jumpTimer)
+    this.jumpTimer = window.setTimeout(() => {
+      this.jumpTimer = 0
+      if (this.state.kind === 'jumping' && this.state.token === token) {
+        this.apply({ type: 'jump-failed' })
+      }
+    }, JUMP_EXPIRE_MS)
+  }
+
+  private beginJumpVerify(token: number): void {
+    if (!this.jumpAnim || this.jumpAnim.token !== token) return
+    this.jumpAnim.verifying = true
+    this.jumpAnim.verifyStable = 0
+    this.jumpAnim.verifyTotal = 0
+    this.schedule()
+  }
+
+  private finishJump(token: number): void {
+    if (this.jumpAnim?.token === token) this.jumpAnim = null
+    if (this.jumpTimer) window.clearTimeout(this.jumpTimer)
+    this.jumpTimer = 0
+    settleJump(token)
+    this.emit(this.jumpEndListeners, token)
+  }
+
+  private stepJump(now: number, dt: number, heightChanged: boolean): void {
+    const state = this.state
+    if (state.kind !== 'jumping') return
+    const box = this.box
+    const anim = this.jumpAnim
+    if (!box || !anim || anim.token !== state.token) return
+    const el = this.findTargetEl(state.target)
+    if (!el) {
+      // 目标在动画中消失（窗口挪走/视图切换）：结束这次跳转，别让状态一直挂着。
+      if (anim.started) this.apply({ type: 'jump-failed' })
+      return
+    }
+    if (!anim.started) this.startJumpAnimation(anim, box)
+    if (anim.verifying) {
+      anim.verifyTotal += 1
+      anim.verifyStable = heightChanged ? 0 : anim.verifyStable + 1
+      if (anim.verifyStable < VERIFY_STABLE_FRAMES && anim.verifyTotal < VERIFY_MAX_FRAMES) return
+      const residual = Math.abs(this.jumpGoal(el, state.align) - box.scrollTop)
+      this.apply({ type: 'jump-verify', residual })
+      return
+    }
+    // 用户滚动（或别的组件写入）会被并入当前位置，弹簧随即继续追目标（R68：不打断动画）。
+    if (Math.abs(box.scrollTop - anim.lastWritten) > 1) {
+      anim.pos = box.scrollTop
+      anim.vel = 0
+    }
+    const goal = this.jumpGoal(el, state.align)
+    if (!anim.teleported) {
+      const plan = planTeleport(anim.pos, goal, box.clientHeight)
+      if (plan.teleported) {
+        anim.pos = plan.pos
+        anim.vel = 0
+      }
+      anim.teleported = true
+    }
+    const reduce = this.reducedMotion()
+    let done: boolean
+    if (reduce) {
+      anim.pos = goal
+      anim.vel = 0
+      done = true
+    } else {
+      const step = stepSpring(anim.pos, anim.vel, goal, dt)
+      anim.pos = step.done ? goal : step.pos
+      anim.vel = step.vel
+      done = step.done || now - anim.beganAt >= 900
+    }
+    this.write(done ? goal : anim.pos)
+    anim.lastWritten = box.scrollTop
+    if (!done) return
+    if (anim.userScrolled) {
+      // 用户已经接管：动画自然走完就结束，不再复核重追（反馈1724#03）。
+      this.apply({ type: 'cancel-jump' })
+      return
+    }
+    this.apply({ type: 'jump-arrived' })
+  }
+
+  private reducedMotion(): boolean {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  /* --------------------------------------------------------- 锚点 */
+
+  private hasRow(id: string): boolean {
+    return !!this.box?.querySelector(`.msg-row[data-message-id="${CSS.escape(id)}"]`)
+  }
+
+  private captureRequestedAnchor(): void {
+    if (!this.anchorRequested || this.state.kind !== 'detached') return
+    this.tempAnchor = null
+    this.tempFrames = 0
+    const box = this.box
+    const row = this.captureTopRow()
+    if (!box || !row) return
+    const anchor: Anchor = {
+      messageId: row.id,
+      offset: row.offset,
+      height: box.scrollHeight,
+      top: box.scrollTop,
+    }
+    this.apply({ type: 'begin-anchor', anchor })
+  }
+
+  private compensateAnchor(anchor: Anchor): void {
+    const box = this.box
+    if (!box || !anchor.messageId) return
+    const row = box.querySelector<HTMLElement>(
+      `.msg-row[data-message-id="${CSS.escape(anchor.messageId)}"]`,
+    )
+    if (!row) return
+    const offset = row.getBoundingClientRect().top - box.getBoundingClientRect().top
+    const delta = offset - anchor.offset
+    if (Math.abs(delta) >= 1) this.write(box.scrollTop + delta)
+  }
+
+  /** 锚点行被卸载：按 scrollHeight 差补一次就释放（纯函数已把状态改回 resume）。 */
+  private fallbackAnchor(anchor: Anchor): void {
+    const box = this.box
+    if (!box) return
+    this.write(box.scrollTop + (box.scrollHeight - anchor.height))
+    this.anchorRequested = false
   }
 
   /** 尺寸变化后把视口首行补回原偏移（临时锚点：稳定 2 帧后释放，不等定时器）。 */
@@ -432,7 +837,7 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (this.anchorRaf) return
     this.anchorRaf = window.requestAnimationFrame(() => {
       this.anchorRaf = 0
-      if (this.state.kind === 'detached' && !this.tempAnchor) {
+      if (this.state.kind === 'detached' && !this.tempAnchor && !this.anchorRequested) {
         this.topRow = this.captureTopRow()
       }
     })
@@ -470,11 +875,16 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.raf = 0
   }
 
+  private anchoringUnderway(): boolean {
+    return this.state.kind === 'anchoring' && !this.anchorRequested
+  }
+
   private tick = (now: number): void => {
     this.raf = 0
     const box = this.box
     if (!box) {
       this.spring = null
+      this.jumpAnim = null
       return
     }
     const dt = springDt(now - this.lastFrameAt)
@@ -496,19 +906,33 @@ class ChatScrollControllerImpl implements ChatScrollController {
         this.write(step.done ? goal : step.pos)
       }
     }
+    if (this.state.kind === 'jumping') this.stepJump(now, dt, heightChanged)
     if (this.tempAnchor) {
       // 临时锚点：内容高度连续 2 帧不变才算这次重排结束。
       if (heightChanged) this.tempFrames = 0
       else this.tempFrames += 1
       if (this.tempFrames >= 2) this.releaseTempAnchor()
     }
-    if (this.state.kind === 'settling' || this.state.kind === 'anchoring') {
+    if (this.state.kind === 'settling') {
       const view = this.sample()
       // settling 只表示「想贴底」：内容稳定却没在底部时补一次，避免空转。
       if (!heightChanged && !this.spring && !atBottom(view)) this.writeBottom()
       this.apply({ type: 'frame', heightChanged, atBottom: atBottom(this.sample()) })
+    } else if (this.anchoringUnderway()) {
+      if (heightChanged) this.anchorStable = 0
+      else this.anchorStable += 1
+      // 行高分几批变成真实值：高度继续变就重置；稳定够久才让状态机按 2 帧收尾。
+      if (heightChanged || this.anchorStable >= ANCHOR_STABLE_FRAMES) {
+        this.apply({ type: 'frame', heightChanged, atBottom: atBottom(this.sample()) })
+      }
     }
-    if (this.spring || this.tempAnchor || this.state.kind === 'settling' || this.state.kind === 'anchoring') {
+    if (
+      this.spring ||
+      this.tempAnchor ||
+      this.state.kind === 'jumping' ||
+      this.state.kind === 'settling' ||
+      this.anchoringUnderway()
+    ) {
       this.schedule()
     }
   }
