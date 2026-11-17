@@ -82,11 +82,13 @@ export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sess
             <div className="mt-0.5 text-[12px] leading-4 text-muted">
               {row.calls} 次 · {tokenLine(row)}
             </div>
-            <div className="text-[12px] leading-4 text-muted">
-              单价 输入 ${priceNumber(price?.input)} · 输出 ${priceNumber(price?.output)} / 百万
-              {price?.cacheRead !== undefined ? ` · 缓存读 $${priceNumber(price.cacheRead)}` : ''}
-              {price?.cacheWrite !== undefined ? ` · 缓存写 $${priceNumber(price.cacheWrite)}` : ''}
-            </div>
+            {price ? (
+              <div className="text-[12px] leading-4 text-muted">
+                单价 输入 ${priceNumber(price.input)} · 输出 ${priceNumber(price.output)} / 百万
+                {price.cacheRead !== undefined ? ` · 缓存读 $${priceNumber(price.cacheRead)}` : ''}
+                {price.cacheWrite !== undefined ? ` · 缓存写 $${priceNumber(price.cacheWrite)}` : ''}
+              </div>
+            ) : null}
             <div className="text-[12px] leading-4 text-text-tertiary">{priceSource(price)}</div>
           </div>
         )
