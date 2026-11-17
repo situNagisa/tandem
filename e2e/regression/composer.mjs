@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'composer'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 55, 68, 70, 71, 72, 73, 76, 77, 83, 105, 107, 114, 115, 116]
+export const order = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 55, 68, 70, 71, 72, 73, 76, 77, 83, 105, 107, 114, 115, 116, 117]
 
 export function register(checks, ctx) {
   const {
@@ -1006,12 +1006,17 @@ desktop('文件夹弹层列出最近目录；浏览对话框首项为上一级�
           )
           return {
             padding: body ? getComputedStyle(body.parentElement).paddingTop : '',
-            borderTop: el.querySelectorAll('.border-t').length,
+            // 共享的底部动作区（data-menu-footer）自带分隔线，不算手写分隔。
+            borderTop: [...el.querySelectorAll('.border-t')].filter(
+              (node) => !node.closest('[data-menu-footer]'),
+            ).length,
+            footer: el.querySelectorAll('[data-menu-footer]').length,
             rowHeights: rows.map((row) => Math.round(row.getBoundingClientRect().height)),
             labelSize: label ? getComputedStyle(label).fontSize : '',
           }
         })
         assert.equal(chrome.borderTop, 0, '文件夹弹层里仍有手写 border-t 分隔线')
+        assert.equal(chrome.footer, 1, '文件夹弹层缺少共享的底部动作区')
         assert.equal(chrome.padding, '4px', `文件夹弹层内边距不是菜单统一值：${chrome.padding}`)
         assert.equal(chrome.labelSize, '12px', `分组标题字号不是菜单统一值：${chrome.labelSize}`)
         assert.ok(
@@ -1515,24 +1520,156 @@ desktop('分支弹层只有一个分支时高度紧凑（反馈1724#01）', asyn
       await page.waitForTimeout(300)
       const info = await panel.evaluate((el) => {
         const box = el.getBoundingClientRect()
-        const menu = el.querySelector('[aria-label="切换分支"]')
+        const body = el.querySelector('[data-menu-body]')
         return {
           height: box.height,
           rows: el.querySelectorAll('[role="menuitem"]').length,
-          menuHeight: menu?.getBoundingClientRect().height ?? 0,
-          menuMaxHeight: menu ? getComputedStyle(menu).maxHeight : '',
-          overflowY: menu ? getComputedStyle(menu).overflowY : '',
+          bodyHeight: body?.getBoundingClientRect().height ?? 0,
+          bodyMaxHeight: body ? getComputedStyle(body).maxHeight : '',
+          overflowY: body ? getComputedStyle(body).overflowY : '',
         }
       })
       assert.equal(info.rows, 2, `分支弹层应只有当前分支与「新建分支…」（${info.rows}）`)
       assert.ok(info.height < 170, `只有一个分支时弹层仍然很高：${info.height}px`)
       assert.equal(info.overflowY, 'auto', '分支列表没有滚动容器')
-      assert.match(info.menuMaxHeight, /260px/, `分支列表缺少高度上限：${info.menuMaxHeight}`)
+      assert.match(info.bodyMaxHeight, /260px/, `分支列表缺少高度上限：${info.bodyMaxHeight}`)
       mkdirSync('/tmp/fix-1724', { recursive: true })
       await page.evaluate(() => document.documentElement.classList.add('dark'))
       await page.screenshot({ path: '/tmp/fix-1724/1724-01-branch-menu-dark.png' })
       await page.evaluate(() => document.documentElement.classList.remove('dark'))
       await page.keyboard.press('Escape')
+    })
+
+desktop('反馈2236#01：主机/文件夹/分支下拉共用同一个 ui/Menu（行样式、宽度、底部动作区一致）', async (page) => {
+      await openSession(page, 'long')
+      // 文件夹弹层只列最近目录：把当前目录放进最近列表，才能验证「当前项 ✓」。
+      const hostKey = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? 'local',
+      )
+      await page.evaluate(
+        ({ key, dirs }) => localStorage.setItem('tandem.recentDirs.v1', JSON.stringify({ [key]: dirs })),
+        { key: hostKey, dirs: [repo] },
+      )
+      const bar = page.locator('[data-env-bar]').first()
+      const triggers = bar.locator('[data-env-bar-row] button[aria-haspopup="menu"]')
+      await triggers.first().waitFor({ timeout: 10_000 })
+      assert.ok((await triggers.count()) >= 3, `环境条菜单触发器不足 3 个：${await triggers.count()}`)
+
+      const labels = ['切换主机', '选择工作目录', '切换分支']
+      const actions = [
+        ['管理主机…', '添加主机…'],
+        ['打开文件夹…'],
+        ['新建分支…'],
+      ]
+      const fix2236Dir = '/tmp/fix-2236'
+      mkdirSync(fix2236Dir, { recursive: true })
+      const shots = []
+      const panels = []
+      for (let i = 0; i < 3; i += 1) {
+        await triggers.nth(i).click()
+        const panel = page.locator('[data-portal-layer="menu"]').last()
+        await panel.waitFor({ state: 'visible', timeout: 5_000 })
+        assert.equal(await panel.getAttribute('aria-label'), labels[i], `第 ${i + 1} 个下拉不是统一的 Menu`)
+        assert.equal(
+          await page.locator('[data-portal-layer="popover"]').count(),
+          0,
+          `「${labels[i]}」仍用 Popover 自绘下拉`,
+        )
+        assert.equal(await panel.locator('[data-menu-body]').count(), 1, `「${labels[i]}」缺少统一的列表容器`)
+        assert.equal(
+          await panel.locator('[data-menu-footer]').count(),
+          1,
+          `「${labels[i]}」缺少统一的底部动作区`,
+        )
+        const footerText = (await panel.locator('[data-menu-footer]').innerText()).trim()
+        for (const action of actions[i]) {
+          assert.ok(footerText.includes(action), `「${labels[i]}」底部动作区缺少「${action}」：${footerText}`)
+        }
+
+        // 行：同一个 Menu 行组件（group/row）、26px 行高、图标 + 名称 + 当前项 ✓。
+        const rows = panel.getByRole('menuitem')
+        const measured = await rows.evaluateAll((els) =>
+          els.map((el) => ({
+            height: el.getBoundingClientRect().height,
+            shared: (el.getAttribute('class') ?? '').includes('group/row'),
+            selected: el.getAttribute('data-selected') === 'true',
+            check: !!el.querySelector('svg.lucide-check'),
+            // 主机行用连接状态点做图标（与参考图一致），其余行是 svg 图标；两者都占同一个图标位。
+            icon: !!el.querySelector(':scope > span.size-4'),
+            glyph: !!el.querySelector(':scope > span.size-4 > svg'),
+            text: (el.textContent ?? '').trim(),
+          })),
+        )
+        assert.ok(measured.length >= 1, `「${labels[i]}」没有任何选项行`)
+        for (const row of measured) {
+          assert.equal(row.height, 26, `「${labels[i]}」行高不一致（${row.height}px）：${row.text}`)
+          assert.ok(row.shared, `「${labels[i]}」的「${row.text}」不是共享 Menu 行`)
+          assert.ok(row.icon, `「${labels[i]}」的「${row.text}」缺少图标`)
+          if (i > 0) assert.ok(row.glyph, `「${labels[i]}」的「${row.text}」缺少图标`)
+        }
+        assert.ok(
+          measured.some((row) => row.selected && row.check),
+          `「${labels[i]}」当前项没有右侧 ✓`,
+        )
+
+        panels.push(
+          await panel.evaluate((el) => ({
+            width: el.getBoundingClientRect().width,
+            minWidth: getComputedStyle(el).minWidth,
+          })),
+        )
+
+        if (i === 2) {
+          // 分支下拉的搜索/新建能力来自共享的 Menu.Search，不是 EnvBar 单独实现。
+          const search = panel.getByRole('textbox', { name: '筛选或新建分支' })
+          assert.equal(await search.count(), 1, '分支下拉缺少共享的顶部搜索框')
+          await search.fill('fb2236-no-such-branch')
+          await page.waitForFunction(
+            () =>
+              !document.querySelector(
+                '[data-menu-body] [role="menuitem"]:not([aria-disabled="true"])',
+              ),
+            null,
+            { timeout: 5_000 },
+          )
+          const create = panel.locator('[data-menu-footer] [role="menuitem"]').first()
+          assert.match(
+            (await create.innerText()).trim(),
+            /新建分支 “fb2236-no-such-branch”/,
+            '搜索不到分支时底部动作没有变成新建',
+          )
+          await search.fill('')
+        }
+
+        await page.evaluate(() => document.documentElement.classList.add('dark'))
+        const file = path.join(fix2236Dir, `01-下拉-${i + 1}-${['主机', '文件夹', '分支'][i]}.png`)
+        await panel.screenshot({ path: file })
+        shots.push(readFileSync(file).toString('base64'))
+        await page.evaluate(() => document.documentElement.classList.remove('dark'))
+        await page.keyboard.press('Escape')
+        await panel.waitFor({ state: 'hidden', timeout: 5_000 })
+      }
+
+      // 宽度规则：内容自适应 + 同一个最小宽度。
+      assert.ok(
+        panels.every((item) => item.minWidth === panels[0].minWidth),
+        `三处下拉最小宽度不一致：${panels.map((item) => item.minWidth).join(' / ')}`,
+      )
+      assert.ok(
+        panels.every((item) => item.width >= 200 && item.width <= 420),
+        `下拉宽度不在「内容自适应 + 最小 200」规则内：${panels.map((item) => item.width).join(' / ')}`,
+      )
+
+      // 三个下拉并排对比图（深色）。
+      const compare = await page.context().newPage()
+      await compare.setViewportSize({ width: 940, height: 560 })
+      await compare.setContent(
+        `<body style="margin:0;padding:14px;background:#1b1b1d;display:flex;gap:14px;align-items:flex-start">${shots
+          .map((data) => `<img src="data:image/png;base64,${data}">`)
+          .join('')}</body>`,
+      )
+      await compare.screenshot({ path: path.join(fix2236Dir, '01-三个下拉并排-深色.png'), fullPage: true })
+      await compare.close()
     })
 
 }

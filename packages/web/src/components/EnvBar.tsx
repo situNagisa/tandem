@@ -1,4 +1,14 @@
-import { forwardRef, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 import {
   ArrowUp,
   Check,
@@ -30,14 +40,16 @@ import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
-import { Input, Switch } from './ui/Controls'
+import { Switch } from './ui/Controls'
 import { Menu, MenuItem, MenuList } from './ui/Menu'
 import { Modal } from './ui/Modal'
-import { Popover } from './ui/Popover'
 
 import { Tooltip } from './ui/Tooltip'
 
 const EMPTY_DEVICE_MOUNTS: DeviceMount[] = []
+
+/** 环境条三个胶囊的下拉统一宽度规则：内容自适应 + 同一最小宽度。 */
+const ENV_MENU_CLASS = 'w-auto min-w-[200px]'
 
 /* 透明底：环境条直接坐在对话背景上，只在悬停/展开时给一点底色。 */
 const triggerClass =
@@ -184,19 +196,6 @@ function HostMenu({
           </Menu.Item>
         )
       })}
-      <Menu.Separator />
-      <Menu.Item
-        icon={<Settings size={13} />}
-        onSelect={() => useUiStore.getState().openSettings('hosts')}
-      >
-        管理主机…
-      </Menu.Item>
-      <Menu.Item
-        icon={<Plus size={13} />}
-        onSelect={() => useUiStore.getState().setAddHostOpen(true)}
-      >
-        添加主机…
-      </Menu.Item>
     </>
   )
 }
@@ -385,36 +384,34 @@ export function FolderBrowser({
 }
 
 /**
- * 文件夹弹层：只列最近用过的目录，底部一项「打开文件夹…」。
+ * 文件夹弹层主体：只列最近用过的目录；底部「打开文件夹…」由 Menu 的底部动作区渲染。
  * 目录浏览器不再常驻，按需在系统对话框（本机）或应用内对话框（其他主机）里打开。
- * 分组标题、分隔线与行都走 ui/Menu 原语，和其他下拉的边距/行高保持一致（反馈1601#01）。
+ * 分组标题与行都走 ui/Menu 原语，和其他下拉的边距/行高保持一致（反馈1601#01 / R01）。
  */
 function FolderPicker({
   hostId,
+  cwd,
   onUse,
-  onBrowse,
 }: {
   hostId: string
+  cwd?: string
   onUse: (path: string) => void
-  onBrowse: () => void
 }) {
   const recent = useMemo(() => loadRecentDirs(hostId), [hostId])
   return (
     <div data-folder-picker="" className="min-w-0">
-      {recent.length > 0 && (
-        <>
-          <Menu.Label>最近</Menu.Label>
-          {recent.map((dir) => (
-            <Menu.Item key={dir} icon={<Folder size={13} />} title={dir} onSelect={() => onUse(dir)}>
-              {basename(dir) || dir}
-            </Menu.Item>
-          ))}
-          <Menu.Separator />
-        </>
-      )}
-      <Menu.Item icon={<FolderOpen size={13} />} onSelect={onBrowse}>
-        打开文件夹…
-      </Menu.Item>
+      {recent.length > 0 && <Menu.Label>最近</Menu.Label>}
+      {recent.map((dir) => (
+        <Menu.Item
+          key={dir}
+          icon={<Folder size={13} />}
+          title={dir}
+          selected={!!cwd && dir === cwd}
+          onSelect={() => onUse(dir)}
+        >
+          {basename(dir) || dir}
+        </Menu.Item>
+      ))}
     </div>
   )
 }
@@ -442,32 +439,49 @@ async function canPickFolderNatively(hostId: string): Promise<boolean> {
   })
 }
 
+/**
+ * 分支下拉：与主机、文件夹共用 ui/Menu（同样的行样式、宽度规则与底部动作区）。
+ * 顶部搜索框是 Menu 的通用能力：筛选已有分支，输入新名字则底部动作变成「新建分支 “…”」。
+ */
 function BranchMenu({
   hostId,
   sessionId,
   current,
-  disabled,
-  onDone,
-  close,
+  onSwitch,
+  trigger,
+  className,
 }: {
   hostId: string
-  sessionId: string
+  sessionId: string | null
   current?: string
-  disabled?: boolean
-  onDone: () => void
-  close: () => void
+  onSwitch: () => void
+  trigger: (state: { open: boolean }) => ReactElement
+  className?: string
 }) {
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const toast = useUiStore((s) => s.toast)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [branches, setBranches] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
 
+  // 每次打开重新拉分支；收起时清掉筛选词与忙碌状态，下次打开是新的会话。
   useEffect(() => {
-    if (!host) return
+    if (!open) {
+      setQuery('')
+      setBusy(false)
+      return
+    }
+    if (!host || !sessionId) {
+      setBranches([])
+      setLoading(false)
+      return
+    }
     let cancelled = false
+    setBranches([])
+    setLoading(true)
     api
       .branches(host, sessionId)
       .then((res) => {
@@ -482,79 +496,110 @@ function BranchMenu({
     return () => {
       cancelled = true
     }
-  }, [host, sessionId, toast])
+  }, [open, host, sessionId, toast])
 
   const run = async (branch: string, create: boolean) => {
-    if (!host || busy) return
+    if (!host || !sessionId || busy) return
     setBusy(true)
     try {
       await api.checkout(host, sessionId, branch, create)
       void useAppStore.getState().refreshSessions(hostId)
       toast(`已切换到分支 ${branch}`, 'success')
-      onDone()
-      close()
+      onSwitch()
+      setOpen(false)
     } catch (err) {
       toast(err instanceof Error ? err.message : '切换分支失败', 'error')
       setBusy(false)
     }
   }
 
+  const typed = query.trim()
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return branches
+    return branches.filter((branch) => branch.toLowerCase().includes(q))
+  }, [branches, query])
+  const exact = branches.find((branch) => branch === typed)
+  const canCreate = !!typed && !exact
+
+  /** ↑↓/Enter 落在列表行上：搜索框只负责筛选与建分支。 */
+  const focusFirstRow = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const content = event.currentTarget.closest('[data-radix-menu-content]')
+    content
+      ?.querySelector<HTMLElement>('[data-menu-body] [role="menuitem"]:not([aria-disabled="true"])')
+      ?.focus()
+  }
+
   return (
-    <div className="w-[240px]">
-      {/* 高度按内容自适应，超过上限再滚动；加载态只占一行，不预先撑开面板（反馈1724#01）。 */}
-      <MenuList aria-label="切换分支" className="max-h-[260px] overflow-y-auto">
-        {loading && (
-          // 用共享菜单行占位：与分支行同高，读回后面板尺寸不变（R52）。
-          <MenuItem icon={<Spinner size={12} />} disabled>
-            读取分支…
-          </MenuItem>
-        )}
-        {!loading &&
-          branches.map((branch) => (
-            <MenuItem
-              key={branch}
-              icon={<GitBranch size={13} />}
-              selected={branch === current}
-              title={branch}
-              onSelect={() => void run(branch, false)}
-            >
-              <span className="font-mono text-[12.5px]">{branch}</span>
-            </MenuItem>
-          ))}
-        {!loading && branches.length === 0 && <MenuItem disabled>当前目录不是 git 仓库</MenuItem>}
-      </MenuList>
-      <div className="mt-1 border-t border-border pt-1">
-        {creating ? (
-          <div className="flex items-center gap-1 px-1">
-            <Input
-              size="sm"
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="新分支名"
-              spellCheck={false}
-              aria-label="新分支名"
-              className="min-w-0 flex-1 font-mono text-[12px]"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim()) void run(name.trim(), true)
-              }}
-            />
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!name.trim() || busy}
-              onClick={() => void run(name.trim(), true)}
-            >
-              创建
-            </Button>
-          </div>
-        ) : (
-          <MenuItem icon={<span className="text-[15px] leading-none">+</span>} onSelect={() => setCreating(true)}>
-            新建分支…
-          </MenuItem>
-        )}
-      </div>
-    </div>
+    <Menu
+      open={open}
+      onOpenChange={setOpen}
+      side="top"
+      align="left"
+      modal={false}
+      className={cn(ENV_MENU_CLASS, className)}
+      bodyClassName="max-h-[260px]"
+      aria-label="切换分支"
+      header={
+        <Menu.Search
+          ref={searchRef}
+          value={query}
+          onChange={setQuery}
+          label="筛选或新建分支"
+          placeholder="筛选分支，或输入新分支名"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+              event.preventDefault()
+              if (canCreate) void run(typed, true)
+              else if (exact) void run(exact, false)
+              else focusFirstRow(event)
+            } else if (event.key === 'ArrowDown') {
+              event.preventDefault()
+              focusFirstRow(event)
+            }
+          }}
+        />
+      }
+      footer={
+        <Menu.Item
+          icon={<Plus size={13} />}
+          keepOpen={!canCreate}
+          onSelect={() => {
+            if (!canCreate) {
+              // Radix 选中后会把焦点留在行上，下一帧再落回搜索框。
+              window.requestAnimationFrame(() => searchRef.current?.focus())
+              return
+            }
+            void run(typed, true)
+          }}
+        >
+          {canCreate ? `新建分支 “${typed}”` : '新建分支…'}
+        </Menu.Item>
+      }
+      trigger={trigger}
+    >
+      {loading && (
+        // 用共享菜单行占位：与分支行同高，读回后面板尺寸不变（R52）。
+        <Menu.Item icon={<Spinner size={12} />} disabled>
+          读取分支…
+        </Menu.Item>
+      )}
+      {!loading && branches.length === 0 && <Menu.Item disabled>当前目录不是 git 仓库</Menu.Item>}
+      {!loading && branches.length > 0 && filtered.length === 0 && (
+        <Menu.Item disabled>没有匹配的分支</Menu.Item>
+      )}
+      {filtered.map((branch) => (
+        <Menu.Item
+          key={branch}
+          icon={<GitBranch size={13} />}
+          selected={branch === current}
+          title={branch}
+          onSelect={() => void run(branch, false)}
+        >
+          <span className="font-mono text-[12.5px]">{branch}</span>
+        </Menu.Item>
+      ))}
+    </Menu>
   )
 }
 
@@ -787,8 +832,24 @@ export function EnvBar({
         side="top"
         align="left"
         modal={false}
-        className="w-auto min-w-[200px]"
+        className={ENV_MENU_CLASS}
         aria-label={isSession ? '切换主机' : '选择主机'}
+        footer={
+          <>
+            <Menu.Item
+              icon={<Settings size={13} />}
+              onSelect={() => useUiStore.getState().openSettings('hosts')}
+            >
+              管理主机…
+            </Menu.Item>
+            <Menu.Item
+              icon={<Plus size={13} />}
+              onSelect={() => useUiStore.getState().setAddHostOpen(true)}
+            >
+              添加主机…
+            </Menu.Item>
+          </>
+        }
         trigger={({ open }) => (
           <EnvTrigger
             icon={
@@ -831,8 +892,13 @@ export function EnvBar({
         modal={false}
         open={folderOpen}
         onOpenChange={setFolderOpen}
-        className="w-[260px]"
+        className={ENV_MENU_CLASS}
         aria-label="选择工作目录"
+        footer={
+          <Menu.Item icon={<FolderOpen size={13} />} onSelect={() => void openFolderPicker()}>
+            打开文件夹…
+          </Menu.Item>
+        }
         trigger={({ open }) => (
           <EnvTrigger
             icon={<FolderOpen size={12} className="text-muted" />}
@@ -859,8 +925,8 @@ export function EnvBar({
         {hostId || pendingHost ? (
           <FolderPicker
             hostId={pendingHost?.id ?? hostId}
+            cwd={pendingHost ? undefined : cwd}
             onUse={(path) => applyFolder(path, pendingHost ? 'pending' : 'current')}
-            onBrowse={() => void openFolderPicker()}
           />
         ) : null}
       </Menu>
@@ -882,46 +948,33 @@ export function EnvBar({
       ) : null}
 
       {!knownNonGit && (
-      <Popover
-        side="top"
-        padded={false}
-        className={cn('shrink-0', !isSession && !env?.repoRoot && 'max-sm:hidden')}
-        panelClassName="w-auto rounded-[10px] p-[5px]"
-        trigger={({ open, toggle }) => (
-          <EnvTrigger
-            icon={
-              isWorktree ? (
-                <GitFork size={12} className="text-muted" />
-              ) : (
-                <GitBranch size={12} className="text-muted" />
-              )
-            }
-            label={branch ?? '分支'}
-            loading={!branch && !!envLoading}
-            onClick={toggle}
-            open={open}
-            disabled={locked || !isSession || !sessionId || !env?.repoRoot}
-            title={
-              isSession
-                ? `切换分支${branch ? `（当前 ${branch}）` : ''}`
-                : '创建会话后可切换分支'
-            }
-          />
-        )}
-      >
-        {(close) =>
-          isSession && sessionId && host ? (
-            <BranchMenu
-              hostId={host.id}
-              sessionId={sessionId}
-              current={env?.branch}
-              disabled={locked}
-              onDone={() => void useAppStore.getState().refreshSessions(hostId)}
-              close={close}
+        <BranchMenu
+          hostId={hostId}
+          sessionId={sessionId}
+          current={env?.branch}
+          onSwitch={() => void useAppStore.getState().refreshSessions(hostId)}
+          className={cn(!isSession && !env?.repoRoot && 'max-sm:hidden')}
+          trigger={({ open }) => (
+            <EnvTrigger
+              icon={
+                isWorktree ? (
+                  <GitFork size={12} className="text-muted" />
+                ) : (
+                  <GitBranch size={12} className="text-muted" />
+                )
+              }
+              label={branch ?? '分支'}
+              loading={!branch && !!envLoading}
+              open={open}
+              disabled={locked || !isSession || !sessionId || !env?.repoRoot}
+              title={
+                isSession
+                  ? `切换分支${branch ? `（当前 ${branch}）` : ''}`
+                  : '创建会话后可切换分支'
+              }
             />
-          ) : null
-        }
-      </Popover>
+          )}
+        />
       )}
 
       {!knownNonGit && (

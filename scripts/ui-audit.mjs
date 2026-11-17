@@ -224,6 +224,51 @@ for (const file of files) {
   }
 }
 
+// R01 复发（反馈2236#01）：环境条三个胶囊的下拉必须共用 ui/Menu。ui/ 以外再在 Popover 里
+// 自绘选项列表一律拦下：弹层内直接出现 role="option"/listbox、ui/Menu 的列表原语、map 出的
+// 菜单行，或把列表拆进同文件的组件里（如 <BranchMenu>）而那个组件正是这么画的。
+const MENU_LIST_RE =
+  /role="(?:option|listbox)"|<MenuList\b|data-menu-item|\.map\s*\([\s\S]{0,240}?<(?:Menu\.(?:Item|RadioItem|CheckItem)|MenuItem)\b/
+
+/** 同文件里的组件定义体（顶层 function/const 到下一个顶层声明），用于判断弹层内容组件是否自绘列表。 */
+function componentBody(text, name) {
+  const def = new RegExp(`^(?:export\\s+)?(?:function|const)\\s+${name}\\b`, 'm').exec(text)
+  if (!def) return ''
+  const rest = text.slice(def.index)
+  const next = /\n(?:export\s+)?(?:function|const|interface|type)\s/.exec(rest.slice(1))
+  return next ? rest.slice(0, next.index + 1) : rest
+}
+
+for (const file of files) {
+  const text = await readFile(file, 'utf8')
+  const openRe = /<Popover\b/g
+  let match
+  while ((match = openRe.exec(text))) {
+    const tagEnd = text.indexOf('>', match.index)
+    if (tagEnd < 0) continue
+    const close = text.indexOf('</Popover>', tagEnd)
+    if (close < 0) continue
+    const block = text.slice(tagEnd + 1, close)
+    let offender = MENU_LIST_RE.exec(block)?.[0]
+    if (!offender) {
+      for (const tag of block.matchAll(/<([A-Z][\w$]*)\b/g)) {
+        const body = componentBody(text, tag[1])
+        offender = body ? MENU_LIST_RE.exec(body)?.[0] : undefined
+        if (offender) break
+      }
+    }
+    if (!offender) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line: text.slice(0, match.index).split('\n').length,
+      check: 'popover-option-list',
+      label: 'Popover 里自绘选项列表：下拉统一用 ui/Menu（行样式/宽度/底部动作区只定义一次，R01）',
+      text: offender.replace(/\s+/g, ' ').slice(0, 160),
+    })
+  }
+}
+
+
 // tooltip 不能出现 0 宽度（否则每行一个字，反馈 #01）：全局样式必须有 min-width。
 // 找不到目标时按失败处理，避免样式改名后静默跳过。
 let indexCss = ''

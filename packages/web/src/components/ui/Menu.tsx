@@ -3,6 +3,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -11,7 +12,7 @@ import {
   type ReactNode,
 } from 'react'
 import * as RDropdown from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { useOverflowTitle } from '../../lib/hooks'
 import { nodeContains, portalLayer } from '../../lib/overlay'
@@ -116,10 +117,17 @@ export interface MenuProps {
   /** 内容区最大高度，默认跟随可用空间。 */
   maxHeight?: number
   /**
+   * 固定在面板顶部的搜索框（`<Menu.Search>`）：列表独立滚动，输入时不随列表移走。
+   * 传入后打开菜单时焦点落在搜索框，而不是第一行。
+   */
+  header?: ReactNode
+  /**
    * 固定在面板底部的操作区（管理账号、思考强度等）。
    * 传入后主体列表独立滚动，窗口再小也不会把底部操作挤出屏幕。
    */
   footer?: ReactNode
+  /** 列表区的额外样式（如高度上限）。 */
+  bodyClassName?: string
   modal?: boolean
   'aria-label'?: string
 }
@@ -169,7 +177,9 @@ function MenuRoot({
   alignOffset,
   className,
   maxHeight,
+  header,
   footer,
+  bodyClassName,
   modal = true,
   'aria-label': ariaLabel,
 }: MenuProps) {
@@ -223,7 +233,15 @@ function MenuRoot({
           className={cn(PANEL_OUTER, className)}
         >
           <div className={PANEL_INNER}>
-            <div data-menu-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {header ? (
+              <div data-menu-header="" className="shrink-0 px-0.5 pb-1">
+                {header}
+              </div>
+            ) : null}
+            <div
+              data-menu-body=""
+              className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain', bodyClassName)}
+            >
               {children}
             </div>
             {footer ? (
@@ -453,6 +471,61 @@ function MenuLabel({ children, className }: { children: ReactNode; className?: s
   )
 }
 
+export interface MenuSearchProps {
+  value: string
+  onChange: (value: string) => void
+  /** 无障碍名称，同时作为占位提示的兜底。 */
+  label: string
+  placeholder?: string
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLInputElement>) => void
+  /** 打开菜单后把焦点放到搜索框（默认开）。 */
+  autoFocus?: boolean
+  className?: string
+}
+
+/**
+ * 菜单顶部的搜索框（配合 `<Menu header={…}>`）。输入框自己消费按键，
+ * 避免 Radix 的 typeahead 把输入当成跳转、把焦点从输入框挪到行上。
+ */
+export const MenuSearch = forwardRef<HTMLInputElement, MenuSearchProps>(function MenuSearch(
+  { value, onChange, label, placeholder, onKeyDown, autoFocus = true, className },
+  forwardedRef,
+) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  useImperativeHandle(forwardedRef, () => inputRef.current as HTMLInputElement)
+  // Radix 在挂载后的 FocusScope 里把焦点放到列表首行；等它之后再把焦点收进搜索框。
+  useEffect(() => {
+    if (!autoFocus) return
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 0)
+    return () => window.clearTimeout(timer)
+  }, [autoFocus])
+  return (
+    <div
+      className={cn(
+        'flex h-8 items-center gap-1.5 rounded-md bg-[var(--t-bg-hover)] pl-2 pr-1',
+        className,
+      )}
+    >
+      <Search size={13} className="shrink-0 text-muted" />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          // Escape 留给 Radix 关闭菜单；其余按键不再冒泡给菜单的键盘导航。
+          if (event.key !== 'Escape') event.stopPropagation()
+          onKeyDown?.(event)
+        }}
+        aria-label={label}
+        placeholder={placeholder ?? label}
+        spellCheck={false}
+        autoComplete="off"
+        className="h-full min-w-0 flex-1 bg-transparent text-[12.5px] text-text outline-none placeholder:text-muted"
+      />
+    </div>
+  )
+})
+
 export interface MenuSubTriggerProps {
   children: ReactNode
   icon?: ReactNode
@@ -529,6 +602,7 @@ export const Menu = Object.assign(MenuRoot, {
   RadioItem: MenuRadioItem,
   Separator: MenuSeparator,
   Label: MenuLabel,
+  Search: MenuSearch,
   Sub: MenuSubRoot,
   SubTrigger: MenuSubTrigger,
   SubContent: MenuSubContent,
