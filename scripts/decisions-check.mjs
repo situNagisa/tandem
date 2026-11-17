@@ -275,12 +275,12 @@ const DECISIONS = [
   {
     id: 'jump-single-spring',
     source:
-      '反馈1110（2026-11-12 用户原话：跳转用之前的轮次大纲的跳转代码，不需要滑轮中断跳转，只是统一跳转逻辑，并且不要一直轮询锁视图，现在的跳转没有跳转动画了）',
+      '反馈1110（2026-11-12 用户原话：跳转用之前的轮次大纲的跳转代码……不要一直轮询锁视图）；反馈1724#03（2026-11-17 用户原话：会话轮次的跳转还是有持续轮询的锁定，导致在滑动滚轮的时候会抽出）',
     decision:
-      '所有入口（轮次大纲、会话图、搜索、收件箱、子代理返回）只有一个跳转实现 lib/jump.ts：focusMessage/focusTool 用轮次大纲原来的弹簧跟随动画滚动（长距离先瞬移到目标前约 1 屏），到达后最多复核一次落点就停；不轮询、不按定时器反复写 scrollTop，滚轮不中断动画，结束后视口归用户',
-    files: [F.jump, F.messageList, 'packages/web/src/components/chat/TurnRail.tsx'],
-    need: [/createJumpScroller/, /startJumpScroll/, /FOLLOW_K = 240/, /focusMessage\(/],
-    deny: [/CANCEL_EVENTS/, /armCancel/, /pollJump/],
+      '所有入口只调 lib/jump.ts 的 jumpTo/focusMessage/focusTool；唯一写位置的是滚动控制器（lib/scroll）：弹簧动画（FOLLOW_K = 240，远距离先瞬移），动画有最长时长，期间用户滚动即结束跳转、不再写回；不轮询、不用定时器反复写',
+    files: [F.jump, 'packages/web/src/lib/scroll/chatScroll.ts', 'packages/web/src/lib/scroll/chatScrollController.ts'],
+    need: [/export function jumpTo\(/, /export function focusMessage\(/, /FOLLOW_K = 240/, /jump\(target/],
+    deny: [/pollJump/, /setInterval\(/],
   },
   {
     id: 'sidebar-fork-same-row',
