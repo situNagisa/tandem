@@ -72,10 +72,8 @@ interface ModelPanelProps {
   /** 分工与取向：与模型设置放在同一个菜单里，选择即写入当前会话。 */
   delegation: DelegationStrategy
   routeBias: RoutePreference | undefined
-  routeNative: boolean
   onDelegationChange: (strategy: DelegationStrategy) => void
   onRouteBiasChange: (bias: RoutePreference) => void
-  onRouteNativeChange: (native: boolean) => void
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onSelectAuto: () => void
@@ -110,10 +108,8 @@ function useModelPanel({
   contextNote,
   delegation,
   routeBias,
-  routeNative,
   onDelegationChange,
   onRouteBiasChange,
-  onRouteNativeChange,
   loading,
   onSelect,
   onSelectAuto,
@@ -253,22 +249,11 @@ function useModelPanel({
 
   const footer = (
     <>
-      <Menu.CheckItem
-        checked={routeNative}
-        onCheckedChange={(checked) => onRouteNativeChange(checked)}
-        hint="不注入分工与取向说明，模型照常拥有全部工具（含 Task），自己决定是否派子代理"
-      >
-        原生
-      </Menu.CheckItem>
       <Menu.Sub>
-        <Menu.SubTrigger
-          trailing={delegationLabel(delegation)}
-          hint={routeNative ? '原生模式下不生效' : '是否派子代理'}
-        >
+        <Menu.SubTrigger trailing={delegationLabel(delegation)} hint="是否派子代理">
           分工
         </Menu.SubTrigger>
         <Menu.SubContent className="w-[220px]" aria-label="分工">
-          {routeNative && <Menu.Label>原生模式下不生效</Menu.Label>}
           <Menu.RadioGroup
             value={delegation}
             onValueChange={(value) => onDelegationChange(value as DelegationStrategy)}
@@ -278,8 +263,6 @@ function useModelPanel({
                 key={value}
                 value={value}
                 hint={DELEGATION_META[value].hint}
-                disabled={routeNative}
-                disabledReason="原生模式下不生效"
               >
                 {DELEGATION_META[value].label}
               </Menu.RadioItem>
@@ -288,14 +271,10 @@ function useModelPanel({
         </Menu.SubContent>
       </Menu.Sub>
       <Menu.Sub>
-        <Menu.SubTrigger
-          trailing={routeBiasLabel(routeBias)}
-          hint={routeNative ? '原生模式下不生效' : '执行者与子代理用什么模型'}
-        >
+        <Menu.SubTrigger trailing={routeBiasLabel(routeBias)} hint="执行者与子代理用什么模型">
           取向
         </Menu.SubTrigger>
         <Menu.SubContent className="w-[220px]" aria-label="取向">
-          {routeNative && <Menu.Label>原生模式下不生效</Menu.Label>}
           <Menu.RadioGroup
             value={routeBias}
             onValueChange={(value) => onRouteBiasChange(value as RoutePreference)}
@@ -305,8 +284,6 @@ function useModelPanel({
                 key={value}
                 value={value}
                 hint={ROUTE_BIAS_META[value].hint}
-                disabled={routeNative}
-                disabledReason="原生模式下不生效"
               >
                 {ROUTE_BIAS_META[value].label}
               </Menu.RadioItem>
@@ -314,6 +291,8 @@ function useModelPanel({
           </Menu.RadioGroup>
         </Menu.SubContent>
       </Menu.Sub>
+      {/* 分工与取向是一组；用分隔线与思考强度及之后的账号设置分开（反馈1724#02）。 */}
+      <Menu.Separator />
       {!autoRoute && efforts.length > 0 && (
         <Menu.Sub>
           <Menu.SubTrigger
@@ -428,10 +407,8 @@ export function ModelMenu({
   contextNote,
   delegation,
   routeBias,
-  routeNative,
   onDelegationChange,
   onRouteBiasChange,
-  onRouteNativeChange,
   loading,
   disabled,
   onSelect,
@@ -500,10 +477,8 @@ export function ModelMenu({
     contextNote,
     delegation,
     routeBias,
-    routeNative,
     onDelegationChange,
     onRouteBiasChange,
-    onRouteNativeChange,
     loading,
     onSelect,
     onSelectAuto,

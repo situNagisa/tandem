@@ -37,8 +37,8 @@ export function calibrateContext(host: Host, rec: SessionRecord, context: Contex
 export function promptOptions(host: Host, rec: SessionRecord,
     opts: { allowTask?: boolean; hookContext?: string } = {}) {
   const allowTask = opts.allowTask !== false;
-  // 原生模式不注入分工/取向说明；Task 本身仍可用，模型自己决定是否派子代理。
-  const withDelegationPrompt = allowTask && rec.routeNative !== true;
+  // 取向关闭只影响取向说明（见 routePlanInjection），分工说明照常注入。
+  const withDelegationPrompt = allowTask;
   return {
     allowTask,
     planMode: rec.permissionMode === 'plan',

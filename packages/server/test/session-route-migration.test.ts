@@ -132,3 +132,28 @@ test('新字段 routeBias 与分工原样保留', () => {
     assert.equal(readFileSync(path.join(home, 'sessions', 's1.json'), 'utf8').includes('routePreference'), false);
   });
 });
+
+test('旧原生开关 routeNative=true 迁移为取向关闭，分工保持原值，字段删除', () => {
+  withHome((home) => {
+    writeSessions(home, [
+      legacySession('on', { routeNative: true, delegation: 'more' }),
+      legacySession('onWithBias', { routeNative: true, routeBias: 'cost', delegation: 'less' }),
+      legacySession('off', { routeNative: false, routeBias: 'quality' }),
+    ]);
+    const store = new SessionStore(home);
+    assert.equal(store.get('on')?.routeBias, 'off');
+    assert.equal(store.get('on')?.delegation, 'more');
+    assert.equal('routeNative' in (store.get('on') ?? {}), false);
+    // 原生胜出：旧的取向不再生效。
+    assert.equal(store.get('onWithBias')?.routeBias, 'off');
+    assert.equal(store.get('onWithBias')?.delegation, 'less');
+    assert.equal(store.get('off')?.routeBias, 'quality');
+    assert.equal('routeNative' in (store.get('off') ?? {}), false);
+    store.flush();
+
+    const saved = readSession(home, 'on');
+    assert.equal(saved.routeBias, 'off');
+    assert.equal(saved.delegation, 'more');
+    assert.equal('routeNative' in saved, false);
+  });
+});

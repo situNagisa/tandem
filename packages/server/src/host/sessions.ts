@@ -219,7 +219,6 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.effort ? { effort: rec.effort } : {}),
     ...(typeof rec.longContext === 'boolean' ? { longContext: rec.longContext } : {}),
     ...(rec.delegation ? { delegation: rec.delegation } : {}),
-    ...(rec.routeNative ? { routeNative: true } : {}),
     // 可选字段只在有值时下发，老客户端不受影响
     ...(rec.pinned ? { pinned: true } : {}),
     ...(rec.pinnedInProject ? { pinnedInProject: true } : {}),
@@ -453,7 +452,6 @@ export async function createSession(host: Host, input: {
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
-    routeNative?: unknown;
     longContext?: unknown;
     title?: unknown;
     worktree?: unknown;
@@ -498,11 +496,6 @@ export async function createSession(host: Host, input: {
     throw new Error(`无效的 delegation: ${String(input.delegation)}`);
   }
   const delegation = normalizeDelegation(input.delegation) ?? host.settings().defaultDelegation ?? 'less';
-  // 原生模式：显式传入为准；未传时跟随设置「模型路由 → 新会话默认」。
-  const routeNative =
-    typeof input.routeNative === 'boolean'
-      ? input.routeNative
-      : routingSettingsOf(host)?.native === true;
   // 上下文窗口：显式传入为准，缺省按分组默认；都没有时跟随模型能力。
   const selectedGroup = groupId ? profile.groups?.find((g) => g.id === groupId) : undefined;
   const longContext =
@@ -539,7 +532,6 @@ export async function createSession(host: Host, input: {
     permissionMode,
     ...(effort ? { effort } : {}),
     delegation,
-    ...(routeNative ? { routeNative: true } : {}),
     ...(longContext !== undefined ? { longContext } : {}),
     depth: 0,
     status: 'idle',
@@ -581,7 +573,6 @@ export function updateSession(host: Host, id: string,
       archived?: unknown;
       effort?: unknown;
       delegation?: unknown;
-      routeNative?: unknown;
       longContext?: unknown;
       cwd?: unknown;
     },): SessionRecord | undefined {
@@ -620,10 +611,6 @@ export function updateSession(host: Host, id: string,
     const delegation = normalizeDelegation(patch.delegation);
     if (!delegation) throw new Error(`无效的 delegation: ${patch.delegation}`);
     rec.delegation = delegation;
-  }
-  if (typeof patch.routeNative === 'boolean') {
-    if (patch.routeNative) rec.routeNative = true;
-    else delete rec.routeNative;
   }
   if (typeof patch.longContext === 'boolean') {
     rec.longContext = patch.longContext;
@@ -755,7 +742,6 @@ export function forkSession(host: Host, id: string, messageId?: string): Session
     ...(typeof src.longContext === 'boolean' ? { longContext: src.longContext } : {}),
     ...(src.delegation ? { delegation: src.delegation } : {}),
     ...(src.routeBias ? { routeBias: src.routeBias } : {}),
-    ...(src.routeNative ? { routeNative: true } : {}),
     status: 'idle',
     createdAt: now,
     updatedAt: now,

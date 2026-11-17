@@ -297,7 +297,7 @@ desktop('自动模型路由：简单快速、困难强力、失败升级、连�
       await page.keyboard.press('Escape')
     })
 
-desktop('分工路由：原生不注入且 Task 可用、分工关闭零派发、取向省钱整单交执行者、分工积极协作、确认卡与学到的偏好', async (page) => {
+desktop('分工路由：取向关闭不注入取向段、分工关闭零派发、取向省钱整单交执行者、分工积极协作、确认卡与学到的偏好', async (page) => {
         const shotsDir = '/tmp/route2-shots'
         mkdirSync(shotsDir, { recursive: true })
         const divisionSettings = {
@@ -393,103 +393,109 @@ desktop('分工路由：原生不注入且 Task 可用、分工关闭零派发�
           await sub.getByRole('menuitemradio', { name: label, exact: true }).click()
           await page.waitForTimeout(200)
         }
-        const pickNative = async (expectChecked = false) => {
+        const manualText =
+          '请帮我完成前端批量改造：批量修改所有组件的按钮间距与布局样式，然后跑一遍 lint 和测试，最后整理结果。请注意不要改动后端接口，保持现有样式变量不变，完成后说明改了哪些文件。'
+        const biasMenuOf = async () => {
           await page.getByRole('button', { name: /^选择模型：/ }).first().click()
           const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
           await menu.waitFor()
-          const box = menu.getByRole('menuitemcheckbox', { name: '原生' })
-          await box.waitFor()
-          if (expectChecked) {
-            // 刷新后会话摘要稍后才到：等菜单反映出会话里的原生状态再点，避免点成「开」。
-            await page.waitForFunction(
-              () => document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]'),
-              null,
-              { timeout: 10_000 },
-            )
-          }
-          await box.click()
-          await page.waitForTimeout(200)
-          await page.keyboard.press('Escape')
+          return menu
         }
 
-        // 0. 原生：不注入任何分工/取向/路由说明，工具不减（Task 仍可用）；选择即写入会话，下一条与再下一条都用它。
-        await pickNative()
-        assert.equal((await sessionOf()).routeNative, true, '原生开关没有写入会话')
-        for (const round of [1, 2]) {
-          const start = provider.routeSeen.length
-          const native = await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
-          const calls = provider.routeSeen.slice(start)
-          assert.equal(calls.length, 1, `原生第 ${round} 条消息不应额外请求模型`)
-          assert.ok(calls[0].toolNames.includes('Task'), `原生第 ${round} 条消息 Task 不可用`)
-          assert.ok(!calls[0].systemText.includes('# 分工：'), `原生第 ${round} 条消息仍注入分工说明`)
-          assert.ok(
-            !calls[0].systemText.includes('多代理协作 · 本轮'),
-            `原生第 ${round} 条消息仍注入规划说明`,
-          )
-          const plan = native.messages.filter((m) => m.routePlan).at(-1)?.routePlan
-          assert.equal(plan?.mode, 'native', `原生第 ${round} 条消息提示行不是原生`)
-          assert.equal((plan?.injected ?? []).length, 0, '原生不应有注入原文')
-          assert.match(JSON.stringify(native.messages), /原生（未注入）/, '提示行没有标注原生（未注入）')
-        }
-        // 原生打开时分工与取向两组置灰并注明。
-        await page.getByRole('button', { name: /^选择模型：/ }).first().click()
-        await page.locator('[role="menu"][aria-label="选择模型"]').first().waitFor()
-        await page.getByRole('menuitem', { name: /^分工/ }).hover()
-        const nativeDelegation = page.locator('[role="menu"][aria-label="分工"]').first()
-        await nativeDelegation.waitFor({ state: 'visible', timeout: 5_000 })
-        assert.match(await nativeDelegation.innerText(), /原生模式下不生效/, '原生时分工分组的说明缺失')
-        assert.equal(
-          await nativeDelegation.getByRole('menuitemradio', { name: '适度', exact: true }).getAttribute('aria-disabled'),
-          'true',
-          '原生时分工选项没有置灰',
+        // 0. 菜单结构（反馈1724#02）：没有「原生」；分工、取向是一组，其下分隔线再是思考强度。
+        const structureMenu = await biasMenuOf()
+        const structureText = await structureMenu.innerText()
+        assert.ok(!structureText.includes('原生'), `模型菜单仍有「原生」：${structureText}`)
+        const footerRows = await structureMenu.evaluate((el) => {
+          const footer = el.querySelector('[data-menu-footer]') ?? el
+          return [...footer.children].map((child) => ({
+            separator: child.getAttribute('role') === 'separator',
+            text: (child.textContent ?? '').trim(),
+          }))
+        })
+        const biasRow = footerRows.findIndex((row) => row.text.startsWith('取向'))
+        const separatorRow = footerRows.findIndex((row, index) => index > biasRow && row.separator)
+        const effortRow = footerRows.findIndex((row) => row.text.startsWith('思考强度'))
+        assert.ok(biasRow >= 0, `菜单缺少取向分组：${JSON.stringify(footerRows)}`)
+        assert.ok(
+          separatorRow > biasRow && (effortRow < 0 || separatorRow < effortRow),
+          `分工/取向下缺少与后续设置之间的分隔线：${JSON.stringify(footerRows)}`,
         )
-        await page.screenshot({ path: path.join(shotsDir, 'model-menu-native.png') })
+        await structureMenu.getByRole('menuitem', { name: /^取向/ }).hover()
+        const offSub = page.locator('[role="menu"][aria-label="取向"]').first()
+        await offSub.waitFor({ state: 'visible', timeout: 5_000 })
+        assert.ok(
+          (await offSub.innerText()).includes('关闭'),
+          '取向子菜单缺少「关闭」',
+        )
         await page.keyboard.press('Escape')
         await page.keyboard.press('Escape')
-        // 反馈1601#04 截图：深/浅色模型菜单，原生打开时分工/取向置灰并注明。
-        const fixDir = '/tmp/fix-1601b'
-        mkdirSync(fixDir, { recursive: true })
-        for (const theme of ['dark', 'light']) {
-          await page.evaluate((next) => localStorage.setItem('tandem.theme.v1', next), theme)
-          await page.reload({ waitUntil: 'domcontentloaded' })
-          await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
-          await page.getByRole('button', { name: /^选择模型：/ }).first().click()
-          const themedMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
-          await themedMenu.waitFor()
-          await page.waitForFunction(
-            () => document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]'),
-            null,
-            { timeout: 10_000 },
+
+        // 分工积极 + 取向均衡：注入分工与取向两段（对照）。
+        await pickRoute('分工', '积极')
+        await pickRoute('取向', '均衡')
+        assert.equal((await sessionOf()).routeBias, 'balanced', '取向均衡没有写入会话')
+        const biasStart = provider.routeSeen.length
+        const withBias = await sendTurn(manualText, '多代理协作完成：已审查执行结果，样式与测试均通过。')
+        const biasCalls = provider.routeSeen.slice(biasStart)
+        assert.ok(
+          biasCalls.some((item) => item.systemText.includes('取向 · 本轮')),
+          '取向均衡时应注入取向段',
+        )
+        const biasPlan = withBias.messages.filter((m) => m.routePlan).at(-1)?.routePlan
+        assert.deepEqual(
+          (biasPlan?.injected ?? []).map((item) => item.name),
+          ['分工', '多代理协作 · 本轮', '取向 · 本轮'],
+          '取向均衡时提示行的注入段不全',
+        )
+
+        // 取向关闭：不注入取向说明，分工照常；Task 仍可用，写入会话后后续消息都沿用。
+        await pickRoute('取向', '关闭')
+        assert.equal((await sessionOf()).routeBias, 'off', '取向关闭没有写入会话')
+        for (const round of [1, 2]) {
+          const offStart = provider.routeSeen.length
+          const off = await sendTurn(manualText, '多代理协作完成：已审查执行结果，样式与测试均通过。')
+          const offCalls = provider.routeSeen.slice(offStart)
+          const planner = offCalls.find((item) => item.model === 'route-power')
+          assert.ok(planner, `取向关闭第 ${round} 条消息没有请求规划者`)
+          assert.ok(planner.toolNames.includes('Task'), `取向关闭第 ${round} 条消息 Task 不可用`)
+          assert.ok(
+            planner.systemText.includes('# 分工：'),
+            `取向关闭第 ${round} 条消息未注入分工说明`,
           )
-          await page.screenshot({ path: path.join(fixDir, `model-menu-native-${theme}.png`) })
-          await themedMenu.getByRole('menuitem', { name: /^分工/ }).hover()
-          const themedSub = page.locator('[role="menu"][aria-label="分工"]').first()
-          await themedSub.waitFor({ state: 'visible', timeout: 5_000 })
-          assert.equal(
-            await themedSub.getByRole('menuitemradio', { name: '适度', exact: true }).getAttribute('aria-disabled'),
-            'true',
-            `${theme} 原生时分工选项没有置灰`,
+          assert.ok(
+            planner.systemText.includes('多代理协作 · 本轮'),
+            `取向关闭第 ${round} 条消息未注入规划说明`,
           )
-          assert.match(await themedSub.innerText(), /原生模式下不生效/, `${theme} 原生时缺少「原生模式下不生效」`)
-          await page.screenshot({ path: path.join(fixDir, `model-menu-native-disabled-${theme}.png`) })
-          await page.keyboard.press('Escape')
-          await page.keyboard.press('Escape')
+          assert.ok(
+            !planner.systemText.includes('取向 · 本轮'),
+            `取向关闭第 ${round} 条消息仍注入取向说明`,
+          )
+          const plan = off.messages.filter((m) => m.routePlan).at(-1)?.routePlan
+          assert.equal(plan?.bias, 'off', `取向关闭第 ${round} 条消息提示行取向不是关闭`)
+          assert.deepEqual(
+            (plan?.injected ?? []).map((item) => item.name),
+            ['分工', '多代理协作 · 本轮'],
+            `取向关闭第 ${round} 条消息注入段应只有分工`,
+          )
         }
-        await pickNative(true)
-        await waitUntil('关闭原生写回会话', async () => (await sessionOf()).routeNative === undefined)
-        assert.equal((await sessionOf()).routeNative, undefined, '关闭原生没有写回会话')
 
         // 1. 分工关闭：主会话自己完成，零 Task 子代理，也不出提示行；下一条与再下一条都用它。
         await pickRoute('分工', '关闭')
         assert.equal((await sessionOf()).delegation, 'none', '分工关闭没有写入会话')
         const plansBeforeOff = await planCount()
+        const childrenBeforeOff = (await childrenOf()).length
         for (const round of [1, 2]) {
           const directStart = provider.routeSeen.length
           await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
           const directCalls = provider.routeSeen.slice(directStart)
           assert.equal(directCalls.length, 1, `分工关闭第 ${round} 条不应产生额外模型请求`)
           assert.equal(directCalls[0].model, 'route-power', `分工关闭第 ${round} 条应由主会话模型处理`)
-          assert.equal((await childrenOf()).length, 0, `分工关闭第 ${round} 条不应派发子代理`)
+          assert.equal(
+            (await childrenOf()).length,
+            childrenBeforeOff,
+            `分工关闭第 ${round} 条不应派发子代理`,
+          )
           assert.equal(await planCount(), plansBeforeOff, `分工关闭第 ${round} 条不应出现提示行`)
         }
         assert.equal((await sessionOf()).delegation, 'none', '分工关闭在后续消息中没有保留')
@@ -500,18 +506,17 @@ desktop('分工路由：原生不注入且 Task 可用、分工关闭零派发�
         assert.equal((await sessionOf()).delegation, 'less', '分工适度没有写入会话')
         assert.equal((await sessionOf()).routeBias, 'cost', '取向省钱没有写入会话')
         const cheapStart = provider.routeSeen.length
+        const childrenBeforeCheap = (await childrenOf()).length
         const cheap = await sendTurn('安装依赖并跑通构建', '便宜执行完成：依赖已安装，构建通过。')
         const cheapCalls = provider.routeSeen.slice(cheapStart)
         assert.deepEqual(cheapCalls.map((item) => item.model), ['route-mini'], '省钱应只调用执行模型')
         const cheapChildren = await childrenOf()
-        assert.equal(cheapChildren.length, 1, '省钱应创建一个执行子代理')
+        assert.equal(cheapChildren.length, childrenBeforeCheap + 1, '省钱应创建一个执行子代理')
         assert.equal(cheap.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode, 'cheap')
 
         // 3. 分工关闭：长任务也不派发。
         await pickRoute('分工', '关闭')
         const manualStart = provider.routeSeen.length
-        const manualText =
-          '请帮我完成前端批量改造：批量修改所有组件的按钮间距与布局样式，然后跑一遍 lint 和测试，最后整理结果。请注意不要改动后端接口，保持现有样式变量不变，完成后说明改了哪些文件。'
         const childCountBefore = (await childrenOf()).length
         await sendTurn(manualText, '路由模型 route-power 已回复。')
         assert.equal((await childrenOf()).length, childCountBefore, '分工关闭不应派发子代理')
@@ -782,7 +787,7 @@ fb2102('反馈1323#03：路由提示行可展开看本轮注入，未注入时�
       const line = page.locator('[data-route-plan="division"]').last()
       await line.waitFor({ timeout: 10_000 })
       assert.equal(await line.getAttribute('data-route-injected'), 'true', '有注入时提示行应可展开')
-      assert.match(await line.innerText(), /本轮注入 2 段/, '提示行没有标明注入段数')
+      assert.match(await line.innerText(), /本轮注入 3 段/, '提示行没有标明注入段数')
       await page.screenshot({ path: shot1323('03-route-line-collapsed-dark.png') })
       await line.getByRole('button').click()
       const injection = line.locator('[data-route-injection]')
@@ -791,6 +796,7 @@ fb2102('反馈1323#03：路由提示行可展开看本轮注入，未注入时�
       assert.match(shown, /分工：积极/, '展开后看不到分工注入原文')
       assert.match(shown, /\[多代理协作 · 本轮\]/, '展开后看不到规划者注入原文')
       assert.match(shown, /分类理由：/, '展开后看不到分类理由')
+      assert.match(shown, /\[取向 · 本轮\]/, '展开后看不到取向注入原文')
       await page.screenshot({ path: shot1323('03-route-line-expanded-dark.png') })
       await useLightTheme(page)
       await page.screenshot({ path: shot1323('03-route-line-expanded-light.png') })

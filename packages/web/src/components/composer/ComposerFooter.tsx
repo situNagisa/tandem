@@ -42,10 +42,8 @@ interface ComposerFooterProps {
   expectedPct: number | undefined
   effectiveDelegation: DelegationStrategy
   effectiveRouteBias: RoutePreference | undefined
-  routeNative: boolean
   onChangeDelegation: (strategy: DelegationStrategy) => void
   onChangeRouteBias: (bias: RoutePreference) => void
-  onChangeRouteNative: (native: boolean) => void
   uiProfiles: Profile[]
   currentProfileId: string
   currentGroupId: string | undefined
@@ -100,10 +98,8 @@ export function ComposerFooter({
   expectedPct,
   effectiveDelegation,
   effectiveRouteBias,
-  routeNative,
   onChangeDelegation,
   onChangeRouteBias,
-  onChangeRouteNative,
   uiProfiles,
   currentProfileId,
   currentGroupId,
@@ -203,10 +199,8 @@ export function ComposerFooter({
             contextNote={contextNote}
             delegation={effectiveDelegation}
             routeBias={effectiveRouteBias}
-            routeNative={routeNative}
             onDelegationChange={onChangeDelegation}
             onRouteBiasChange={onChangeRouteBias}
-            onRouteNativeChange={onChangeRouteNative}
             loading={profilesLoading}
             disabled={modelDisabled}
             open={modelMenuOpen}

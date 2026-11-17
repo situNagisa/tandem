@@ -13,7 +13,7 @@ import type {
 } from '@tandem/protocol';
 
 export const MODEL_TIERS: ModelTier[] = ['fast', 'balanced', 'power'];
-export const ROUTE_PREFERENCES: RoutePreference[] = ['cost', 'balanced', 'quality'];
+export const ROUTE_PREFERENCES: RoutePreference[] = ['off', 'cost', 'balanced', 'quality'];
 export const DELEGATIONS: DelegationStrategy[] = ['more', 'less', 'none'];
 
 /** 分工取值；已移除的「仅规划」(orchestrate) 旧数据并入「积极」。 */
@@ -24,6 +24,11 @@ export function normalizeDelegation(value: unknown): DelegationStrategy | undefi
 
 export function normalizeRouteBias(value: unknown): RoutePreference | undefined {
   return ROUTE_PREFERENCES.includes(value as RoutePreference) ? (value as RoutePreference) : undefined;
+}
+
+/** 取向：关闭时执行者/子代理按均衡档选择，且不注入取向说明。 */
+export function effectiveBias(bias: RoutePreference): Exclude<RoutePreference, 'off'> {
+  return bias === 'off' ? 'balanced' : bias;
 }
 
 /** 一次性覆盖（发送消息时附带）：只保留合法字段，全空返回 undefined。 */
@@ -186,21 +191,23 @@ export function normalizeRoutingSettings(value: unknown): ModelRoutingSettings |
       candidates.push({ profileId, ...(groupId ? { groupId } : {}), model, tier });
     }
   }
-  const preference = ROUTE_PREFERENCES.includes(raw.preference as RoutePreference)
-    ? (raw.preference as RoutePreference)
-    : 'balanced';
+  // 旧设置里的 native 开关并入取向默认「关闭」：只迁移一次，字段不再写回。
+  const legacyNative = raw.native === true;
+  const preference: RoutePreference = legacyNative && raw.preference === undefined
+    ? 'off'
+    : ROUTE_PREFERENCES.includes(raw.preference as RoutePreference)
+      ? (raw.preference as RoutePreference)
+      : 'balanced';
   const division = normalizeDivision(raw.division);
-  const native = raw.native === true;
-  // 没有候选池时，只有默认（均衡、不判断难度、非原生、无分工）才算「未配置」；
+  // 没有候选池时，只有默认（均衡、不判断难度、无分工）才算「未配置」；
   // 用户单独调整的偏好必须保存，否则设置保存后会被判为未启用并回写旧值（R17）。
-  if (candidates.length === 0 && preference === 'balanced' && raw.judge !== true && !native && !division) {
+  if (candidates.length === 0 && preference === 'balanced' && raw.judge !== true && !division) {
     return undefined;
   }
   return {
     candidates,
     preference,
     ...(raw.judge === true ? { judge: true } : {}),
-    ...(native ? { native: true } : {}),
     ...(division ? { division } : {}),
   };
 }

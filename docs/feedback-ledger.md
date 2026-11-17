@@ -60,7 +60,7 @@
 | R58 | 消息缺少发送时间/时间基准；用量行常显占位/极小金额显示 $0.0000 | 3 | `MessageTime` + 用量行悬停显示 + 相对时间；`formatCost` 极小金额显示 `<$0.0001`；单测 format/user-usage；regression 反馈1601#03 |
 | R59 | 账号/Key 按主机各存一份 | 1 | 账号级 profiles + Key 只存工作站 + 主机签名代理；单测 account-profiles；e2e workstation |
 | R60 | 账号余额只能去各家网站看 | 1 | 工作站用 Key 查询 + 平台解析 + 5 分钟缓存；单测 balance；e2e mock |
-| R61 | 用户明确说过/决定过的要求没有落实 | 1 | design 原则 + `scripts/decisions-check.mjs` 逐条检查；接入 `check.mjs` |
+| R61 | 用户明确说过/决定过的要求没有落实 | 2 | design 原则 + `scripts/decisions-check.mjs` 逐条检查；接入 `check.mjs`；2026-11-17 按反馈1724#02 删除「原生」、取向增加「关闭」，decisions-check 改写为 `route-labels`/`route-bias-off`，regression 取向关闭注入段与菜单分隔线 |
 | R62 | 本地乐观消息按内容匹配误删排队气泡 | 1 | 只替换内容一致的排队消息 + 唯一排队兜底；regression 排队消息 |
 | R64 | 设计 token 拼错/未定义，浏览器静默丢弃声明（弹层背景变透明、边框消失） | 1 | ui-audit `undefined-css-var`：源码里的 `var(--x)` 必须在 CSS 有定义，或属于运行时注入（`setProperty`/style 对象自动识别，`--radix-*` 显式白名单，`--graph-lane-` 等模板前缀按同前缀定义校验）；浮层/对话框截图核对（浅色+深色） |
 | R65 | 单价按型号名前缀硬编码，新代际查不到价格（花费显示 —）；未收录型号不按同家族估算 | 1 | `usage.ts` `builtinPriceFor`：前缀表 → Claude 家族+版本 → GPT 基础款最近一代，估算时标 `estimatedFrom`；单价优先级账号自定义 > 内置；单测 `model-families`、`pricing` |

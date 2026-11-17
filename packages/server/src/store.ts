@@ -113,8 +113,12 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   if (delegation) rec.delegation = delegation;
   else delete rec.delegation;
   const routeBias = normalizeRouteBias(raw.routeBias) ?? (legacyPreference === 'cheap' ? 'cost' : undefined);
-  if (routeBias) rec.routeBias = routeBias;
+  // 旧「原生」开关并入取向「关闭」：分工保持原值；字段迁移一次后从文件里删除。
+  if ((raw as SessionRecord & { routeNative?: unknown }).routeNative === true) {
+    rec.routeBias = 'off';
+  } else if (routeBias) rec.routeBias = routeBias;
   else delete rec.routeBias;
+  delete (rec as SessionRecord & { routeNative?: unknown }).routeNative;
   if (typeof raw.parentId === 'string' && raw.parentId) rec.parentId = raw.parentId;
   else delete rec.parentId;
   if (typeof raw.parentToolUseId === 'string' && raw.parentToolUseId) {
@@ -336,9 +340,18 @@ export class SessionStore {
         if (raw.messagesFormat === 'jsonl') {
           this.persistState.set(rec.id, this.stateOf(rec, true));
         }
-        // 旧路由字段与已移除的 orchestrate 只在首次读取时改写一次；之后文件里不再有这些取值。
-        const legacy = raw as SessionRecord & { routeMode?: unknown; routePreference?: unknown };
-        if (legacy.routeMode !== undefined || legacy.routePreference !== undefined || (raw.delegation as unknown) === 'orchestrate') {
+        // 旧路由字段与已移除的 orchestrate / 原生开关只在首次读取时改写一次；之后文件里不再有这些取值。
+        const legacy = raw as SessionRecord & {
+          routeMode?: unknown;
+          routePreference?: unknown;
+          routeNative?: unknown;
+        };
+        if (
+          legacy.routeMode !== undefined ||
+          legacy.routePreference !== undefined ||
+          legacy.routeNative !== undefined ||
+          (raw.delegation as unknown) === 'orchestrate'
+        ) {
           this.markDirty(rec.id, false);
         }
       } catch (err) {

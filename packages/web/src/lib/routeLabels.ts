@@ -53,6 +53,10 @@ export const DELEGATION_META: Record<DelegationStrategy, DelegationMeta> = {
 export const DELEGATION_ORDER: DelegationStrategy[] = ['none', 'less', 'more']
 
 export const ROUTE_BIAS_META: Record<RoutePreference, RouteModeMeta> = {
+  off: {
+    label: '关闭',
+    hint: '不注入取向说明；分工照常，执行者按均衡档选择',
+  },
   cost: {
     label: '省钱',
     hint: '机械任务整单交给执行者，子代理用便宜档',
@@ -67,7 +71,7 @@ export const ROUTE_BIAS_META: Record<RoutePreference, RouteModeMeta> = {
   },
 }
 
-export const ROUTE_BIAS_ORDER: RoutePreference[] = ['cost', 'balanced', 'quality']
+export const ROUTE_BIAS_ORDER: RoutePreference[] = ['off', 'cost', 'balanced', 'quality']
 
 export function delegationLabel(strategy: DelegationStrategy | undefined): string {
   return DELEGATION_META[strategy ?? 'less'].label
