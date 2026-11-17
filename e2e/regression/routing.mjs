@@ -293,7 +293,7 @@ desktop('自动模型路由：简单快速、困难强力、失败升级、连�
       await priceTip.waitFor({ timeout: 5_000 })
       const priceText = await priceTip.innerText()
       assert.match(priceText, /输入 \$0\.1 · 输出 \$0\.2/, '模型菜单缺少参考单价')
-      assert.match(priceText, /缓存 \$0\.05/, '模型菜单缺少缓存命中价')
+      assert.match(priceText, /缓存读 \$0\.05/, '模型菜单缺少缓存命中价')
       await page.keyboard.press('Escape')
     })
 

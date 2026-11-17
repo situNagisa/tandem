@@ -17,7 +17,8 @@
     "test:web": "npm run test -w @tandem/web",
     "smoke": "node e2e/smoke.mjs",
     "check": "node scripts/check.mjs",
-    "regression": "node e2e/regression.mjs"
+    "regression": "node e2e/regression.mjs",
+    "check-prices": "node --import tsx scripts/check-prices.mjs"
   },
   "devDependencies": {
     "playwright": "^1.65.0"

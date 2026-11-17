@@ -182,7 +182,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               输入 {formatTokens(message.usage!.inputTokens)} · 输出{' '}
               {formatTokens(message.usage!.outputTokens)} · 缓存命中{' '}
               {formatTokens(message.usage!.cacheReadTokens ?? 0)} · 花费{' '}
-              {formatCost(message.usage!.costUsd)}
+              {message.usage!.costUsd === undefined ? '未知单价' : formatCost(message.usage!.costUsd)}
             </span>
           )}
           {streaming && (

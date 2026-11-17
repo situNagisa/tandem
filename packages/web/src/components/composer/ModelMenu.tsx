@@ -31,19 +31,22 @@ function priceText(price: ModelPriceInfo): string {
   const fmt = (value: number) => String(Number(value.toFixed(4)))
   const cache =
     price.cacheRead !== undefined && price.cacheRead > 0
-      ? ` · 缓存 $${fmt(price.cacheRead)}`
+      ? ` · 缓存读 $${fmt(price.cacheRead)}`
+      : ''
+  const write =
+    price.cacheWrite !== undefined && price.cacheWrite > 0
+      ? ` · 缓存写 $${fmt(price.cacheWrite)}（5m）`
       : ''
   const account = price.accountMultiplier ?? 1
   const group = price.groupMultiplier ?? 1
-  const estimate = price.estimatedFrom ? `按 ${price.estimatedFrom} 估算 · ` : ''
   if (price.officialInput !== undefined && (account !== 1 || group !== 1)) {
     const factors = [`官方 $${fmt(price.officialInput)}/M`]
     if (account !== 1) factors.push(`账号 ${fmt(account)}`)
     if (group !== 1) factors.push(`分组 ${fmt(group)}`)
-    return `${estimate}${factors.join(' × ')} = $${fmt(price.input)}/M · 输出 $${fmt(price.officialOutput ?? 0)}/M → $${fmt(price.output)}/M${cache}`
+    return `${factors.join(' × ')} = $${fmt(price.input)}/M · 输出 $${fmt(price.officialOutput ?? 0)}/M → $${fmt(price.output)}/M${cache}${write}`
   }
   const prefix = price.source === 'builtin' ? '参考价 · ' : ''
-  return `${prefix}${estimate}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
+  return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}${write}`
 }
 
 interface ModelPanelProps {
@@ -81,7 +84,7 @@ interface ModelPanelProps {
   onEffortChange: (effort: ReasoningEffort) => void
   onLongContextChange: (longContext: boolean) => void
   onManage: () => void
-  /** 单价未设置：跳到该账号的单价覆盖设置。 */
+  /** 未收录官方价：跳到该账号的单价覆盖设置。 */
   onSetupPrice: (model: string) => void
 }
 
@@ -211,7 +214,9 @@ function useModelPanel({
           ? `${pick.model} · ${priceText(price)}`
           : isCurrent(pick) && pricesLoading
             ? `${pick.model} · 单价读取中…`
-            : `${pick.model} · ${profile?.name ?? ''}${groupLabel ? ` › ${groupLabel}` : ''}`
+            : isCurrent(pick)
+              ? `${pick.model} · 该型号尚未收录官方价，可在账号里设置单价`
+              : `${pick.model} · ${profile?.name ?? ''}${groupLabel ? ` › ${groupLabel}` : ''}`
         return (
           <Menu.Item
             key={`${pick.profileId}:${pick.groupId ?? ''}:${pick.model}`}

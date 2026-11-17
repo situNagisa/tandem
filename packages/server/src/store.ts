@@ -56,6 +56,12 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
       ...(typeof usage.cacheWriteTokens === 'number'
         ? { cacheWriteTokens: num(usage.cacheWriteTokens) }
         : {}),
+      ...(typeof usage.cacheWrite5mTokens === 'number'
+        ? { cacheWrite5mTokens: num(usage.cacheWrite5mTokens) }
+        : {}),
+      ...(typeof usage.cacheWrite1hTokens === 'number'
+        ? { cacheWrite1hTokens: num(usage.cacheWrite1hTokens) }
+        : {}),
       ...(typeof usage.reasoningTokens === 'number'
         ? { reasoningTokens: num(usage.reasoningTokens) }
         : {}),
@@ -85,6 +91,8 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
       outputTokens: num(review.outputTokens),
       ...(typeof review.cacheReadTokens === 'number' ? { cacheReadTokens: num(review.cacheReadTokens) } : {}),
       ...(typeof review.cacheWriteTokens === 'number' ? { cacheWriteTokens: num(review.cacheWriteTokens) } : {}),
+      ...(typeof review.cacheWrite5mTokens === 'number' ? { cacheWrite5mTokens: num(review.cacheWrite5mTokens) } : {}),
+      ...(typeof review.cacheWrite1hTokens === 'number' ? { cacheWrite1hTokens: num(review.cacheWrite1hTokens) } : {}),
       ...(typeof review.reasoningTokens === 'number' ? { reasoningTokens: num(review.reasoningTokens) } : {}),
       ...(typeof review.costUsd === 'number' ? { costUsd: review.costUsd } : {}),
     };
@@ -417,6 +425,14 @@ export class SessionStore {
       }
     }
     this.onDelete?.(id);
+  }
+
+  /** 旧消息内容整体变化时整份重写消息日志（价格迁移；增量写盘只追加最后一条）。 */
+  forceRewrite(id: string): void {
+    const rec = this.records.get(id);
+    if (!rec) return;
+    this.onDirty?.(rec);
+    this.persistFullSync(id, rec);
   }
 
   /** 标记需要写盘；bump 为 true 时更新 updatedAt（用户/助手消息、元数据变更）。 */

@@ -56,4 +56,12 @@ export function applyAnthropicUsage(raw: AnyRecord | undefined, usage: Usage): v
   if (typeof raw.cache_creation_input_tokens === 'number') {
     usage.cacheWriteTokens = Math.max(usage.cacheWriteTokens ?? 0, raw.cache_creation_input_tokens);
   }
+  // 细分 TTL：上游给出 cache_creation 对象时按 5m / 1h 分别记账；只给总数时按 5m 价计。
+  const creation = raw.cache_creation;
+  if (creation && typeof creation === 'object') {
+    const m5 = finite(creation.ephemeral_5m_input_tokens);
+    const h1 = finite(creation.ephemeral_1h_input_tokens);
+    if (m5 !== undefined) usage.cacheWrite5mTokens = Math.max(usage.cacheWrite5mTokens ?? 0, m5);
+    if (h1 !== undefined) usage.cacheWrite1hTokens = Math.max(usage.cacheWrite1hTokens ?? 0, h1);
+  }
 }

@@ -677,7 +677,7 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       kind: 'anthropic',
       baseUrl: `http://127.0.0.1:${mockPort}`,
       apiKey: 'reg-key-claude',
-      models: ['claude-sonnet-5-5', 'claude-sonnet-4-5'],
+      models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-sonnet-4-5'],
       defaultModel: 'claude-sonnet-5-5',
       createdAt: Date.now() - 25_000,
     },
@@ -1057,6 +1057,14 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       message('pr1', 'user', '看看这个模型的价格'),
       message('pr2', 'assistant', '按参考价估算。', { model: 'o3' }),
     ], { groupId: 'g2', model: 'o3', updatedAt: Date.now() - 980 }),
+    // 价格只按官方逐型号单价：Opus 5.5 = $4 / $20，菜单与用量卡不出现「估算」。
+    mk('opus-price', 'Opus 5.5 价格会话', [
+      message('op1', 'user', '这个会话花了多少'),
+      message('op2', 'assistant', '按官方单价记账。', {
+        model: 'claude-opus-5-5',
+        usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 4 },
+      }),
+    ], { profileId: 'p-claude', groupId: undefined, model: 'claude-opus-5-5', usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 4 }, updatedAt: Date.now() - 975 }),
     // 反馈2121#01：adaptive 型号的思考强度档位（无 token 预算标签）。
     mk('claude-effort', 'Claude 思考强度会话', [
       message('ce1', 'user', '这道题先想一想'),

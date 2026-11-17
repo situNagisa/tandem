@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'model-accounts'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [21, 22, 23, 34, 35, 36, 37, 80, 81, 82, 91, 114, 115, 220]
+export const order = [21, 22, 23, 34, 35, 36, 37, 80, 81, 82, 83, 91, 114, 115, 220]
 
 export function register(checks, ctx) {
   const {
@@ -399,6 +399,8 @@ desktop('模型菜单：单价未设置时可跳到该账号的单价覆盖', as
       // 用未被其它用例改过模型的会话，保证看到内置表里没有的 mock-1。
       await openSession(page, 'nockpt')
       await waitModelReady(page)
+      // 最近使用列表可能被其它用例填满；清掉后回退显示当前分组的模型。
+      await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
       const modelButton = page.locator('button[aria-label^="选择模型"]').first()
       await modelButton.click()
       const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
@@ -430,6 +432,35 @@ desktop('模型菜单：内置价格表命中时显示「参考价」（R08）',
       const tip = page.locator('#tandem-tooltip[data-open]')
       await tip.waitFor({ timeout: 10_000 })
       assert.match(await tip.innerText(), /参考价 · 输入 \$2 · 输出 \$8/, '内置参考价没有标注来源')
+    })
+
+desktop('模型菜单与用量卡：Opus 5.5 显示官方价 $4/$20，不再出现「估算」（R65）', async (page) => {
+      await openSession(page, 'opus-price')
+      await waitModelReady(page)
+      await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const row = menu.locator('[role="menuitem"]').filter({ hasText: 'Opus 5.5' }).first()
+      await row.hover()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ timeout: 10_000 })
+      const tipText = await tip.innerText()
+      assert.match(tipText, /参考价 · 输入 \$4 · 输出 \$20/, `Opus 5.5 单价不是官方价：${tipText}`)
+      assert.equal(tipText.includes('估算'), false, `菜单仍在显示估算：${tipText}`)
+      const menuText = await menu.innerText()
+      assert.equal(menuText.includes('估算'), false, `模型菜单仍有估算字样：${menuText}`)
+      await page.keyboard.press('Escape')
+
+      const total = page.locator('[data-usage-total]').first()
+      await total.waitFor()
+      await total.hover()
+      const card = page.locator('[data-usage-breakdown]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const cardText = await card.innerText()
+      assert.match(cardText, /\$4\.00(?!\d)/, `用量卡金额不是按 $4 记账：${cardText}`)
+      assert.match(cardText, /内置官方价/, `用量卡没有标出官方价来源：${cardText}`)
+      assert.equal(cardText.includes('估算'), false, `用量卡仍有估算字样：${cardText}`)
     })
 
 desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）', async (page) => {
@@ -507,7 +538,7 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
           `模型菜单没有显示倍率计算方式：${text}`,
         )
         assert.match(text, /输出 \$0\.6\/M → \$0\.24\/M/, `模型菜单没有显示输出最终价：${text}`)
-        assert.match(text, /缓存 \$0\.03/, `模型菜单没有显示最终缓存价：${text}`)
+        assert.match(text, /缓存读 \$0\.03/, `模型菜单没有显示最终缓存价：${text}`)
         await page.keyboard.press('Escape')
       } finally {
         if (session?.id) {

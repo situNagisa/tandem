@@ -73,16 +73,23 @@ test('按模型汇总消息用量：金额与 token 分模型相加，差额单�
   assert.equal(breakdown.total.costUsd, 20);
 });
 
-test('单价按同家族最近代际估算并标出，金额保持记账值', () => {
+test('单价按官方表解析，金额保持记账值；返回会话账号供未知单价跳转', () => {
   const record = rec({
-    messages: [message('a1', 'claude-opus-5-5', { inputTokens: 1_000_000, outputTokens: 0, costUsd: 5 })],
-    usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 5 },
+    messages: [
+      message('a1', 'claude-opus-5-5', { inputTokens: 1_000_000, outputTokens: 0, costUsd: 5 }),
+      message('a2', 'mock-1', { inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 }),
+    ],
+    usage: { inputTokens: 2_000_000, outputTokens: 0, costUsd: 5 },
   });
   const breakdown = sessionUsageBreakdown(host, record);
-  assert.equal(breakdown.estimated, true);
   const price = breakdown.prices['claude-opus-5-5'];
-  assert.equal(price?.input, 5);
-  assert.equal(price?.estimatedFrom, 'claude-opus-4.5');
+  assert.equal(price?.input, 4);
+  assert.equal(price?.output, 20);
+  assert.equal(price?.cacheRead, 0.2);
+  assert.equal(price?.cacheWrite, 5);
   // 记账金额 5 美元没有被按当前单价重算成别的值。
-  assert.equal(breakdown.rows[0]?.costUsd, 5);
+  assert.equal(breakdown.rows.find((row) => row.model === 'claude-opus-5-5')?.costUsd, 5);
+  // 未收录官方价的型号不下发单价，界面据此显示「未知单价」。
+  assert.equal(breakdown.prices['mock-1'], undefined);
+  assert.equal(breakdown.profileId, 'p1');
 });
