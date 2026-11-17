@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'composer'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 55, 68, 70, 71, 72, 73, 76, 77, 83, 105, 107]
+export const order = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 55, 68, 70, 71, 72, 73, 76, 77, 83, 105, 107, 114, 115, 116]
 
 export function register(checks, ctx) {
   const {
@@ -1390,4 +1390,37 @@ desktop('反馈2102#08：环境条主机触发器用显示器图标，与文件�
       assert.equal(await hostTrigger.locator('svg.lucide-folder, svg.lucide-folder-open').count(), 0, '主机触发器仍是文件夹图标')
       assert.equal(await page.locator('[data-env-bar] button:has(svg.lucide-folder-open)').count(), 1, '文件夹触发器缺少文件夹图标')
     })
+
+desktop('分支弹层只有一个分支时高度紧凑（反馈1724#01）', async (page) => {
+      await openSession(page, 'long')
+      const branch = page
+        .locator('main button[aria-haspopup="menu"]')
+        .filter({ has: page.locator('svg.lucide-git-branch') })
+        .first()
+      await branch.click()
+      const panel = page.locator('[data-portal-layer]').filter({ hasText: '新建分支' }).first()
+      await panel.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(300)
+      const info = await panel.evaluate((el) => {
+        const box = el.getBoundingClientRect()
+        const menu = el.querySelector('[aria-label="切换分支"]')
+        return {
+          height: box.height,
+          rows: el.querySelectorAll('[role="menuitem"]').length,
+          menuHeight: menu?.getBoundingClientRect().height ?? 0,
+          menuMaxHeight: menu ? getComputedStyle(menu).maxHeight : '',
+          overflowY: menu ? getComputedStyle(menu).overflowY : '',
+        }
+      })
+      assert.equal(info.rows, 2, `分支弹层应只有当前分支与「新建分支…」（${info.rows}）`)
+      assert.ok(info.height < 170, `只有一个分支时弹层仍然很高：${info.height}px`)
+      assert.equal(info.overflowY, 'auto', '分支列表没有滚动容器')
+      assert.match(info.menuMaxHeight, /260px/, `分支列表缺少高度上限：${info.menuMaxHeight}`)
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-01-branch-menu-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await page.keyboard.press('Escape')
+    })
+
 }

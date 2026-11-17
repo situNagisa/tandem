@@ -501,12 +501,13 @@ function BranchMenu({
 
   return (
     <div className="w-[240px]">
-      {/* 固定高度：分支异步读回时面板尺寸不变（R52 复发）。 */}
-      <MenuList aria-label="切换分支" className="h-[220px] overflow-y-auto">
+      {/* 高度按内容自适应，超过上限再滚动；加载态只占一行，不预先撑开面板（反馈1724#01）。 */}
+      <MenuList aria-label="切换分支" className="max-h-[260px] overflow-y-auto">
         {loading && (
-          <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
-            <Spinner size={12} /> 读取分支…
-          </div>
+          // 用共享菜单行占位：与分支行同高，读回后面板尺寸不变（R52）。
+          <MenuItem icon={<Spinner size={12} />} disabled>
+            读取分支…
+          </MenuItem>
         )}
         {!loading &&
           branches.map((branch) => (
@@ -520,9 +521,7 @@ function BranchMenu({
               <span className="font-mono text-[12.5px]">{branch}</span>
             </MenuItem>
           ))}
-        {!loading && branches.length === 0 && (
-          <p className="px-2 py-2 text-[12px] text-muted">当前目录不是 git 仓库</p>
-        )}
+        {!loading && branches.length === 0 && <MenuItem disabled>当前目录不是 git 仓库</MenuItem>}
       </MenuList>
       <div className="mt-1 border-t border-border pt-1">
         {creating ? (

@@ -51,7 +51,7 @@
 | R48 | 长会话反馈截图克隆整页 DOM 卡顿 | 1 | 样式白名单 + 视口外跳过 + 最深容器 + 原生截图；regression 性能断言 |
 | R49 | 阅读列 shrink-wrap，切换页面抖动 | 1 | `w-full min-w-0 max-w` + `scrollbar-gutter: stable`；regression Wiki 宽度差 ≤1px |
 | R50 | 换主机塞进主机胶囊，语义错位 | 2 | 待定状态 + 自动打开文件夹 + 输入禁用/取消；regression 换主机流程 |
-| R52 | 弹层动画覆盖 Radix transform，首帧抖动 | 2 | 动画只在内层 + 触发器不缩放 + 异步固定尺寸；ui-audit content-transform；regression 15 帧 ≤1px |
+| R52 | 弹层动画覆盖 Radix transform，首帧抖动；为防异步内容抖动把高度写成固定值，内容少时留下大块空白 | 3 | 动画只在内层 + 触发器不缩放；高度按内容自适应、超过上限再滚动，加载态只占一行；ui-audit content-transform；regression 15 帧 ≤1px、分支弹层一项时高度紧凑（反馈1724#01） |
 | R53 | 子代理会话关联不稳、层级用子/孙文字 | 1 | `parentToolUseId`/`tool_result.subagent` + 层级树 + 只读子会话；regression |
 | R54 | 审批卡像重框表单/停靠输入框上方 | 2 | 审批改为对话消息 + Claude 样式；regression 内联/Esc/发送即拒绝/小屏 |
 | R55 | 登录与添加主机流程缺失 | 2 | LoginGate + 无主机空状态 + 一次性令牌 + 持久连接；调试版回环不带 token 自动补凭据、401 不重试；e2e 登录门/安装/免 token 进入 |
