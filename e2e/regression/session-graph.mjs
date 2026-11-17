@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'session-graph'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [59, 132, 133, 134, 135, 136, 137, 138, 139, 140, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200]
+export const order = [59, 132, 133, 134, 135, 136, 137, 138, 139, 140, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201]
 
 export function register(checks, ctx) {
   const {
@@ -1867,5 +1867,120 @@ desktop('侧栏分叉并入原会话行、悬停拓扑图、右栏切分支', as
         { timeout: 10_000 },
       )
       assert.equal(await mainRow.locator('[data-session-branch]').count(), 0, '主会话行仍显示分叉名')
+    })
+
+desktop('反馈2236#02：会话图方向按钮切换最新在上/下，刷新、全高视图与悬停拓扑跟随', async (page) => {
+      const fix2236Dir = '/tmp/fix-2236'
+      mkdirSync(fix2236Dir, { recursive: true })
+      const cardIds = async () =>
+        page
+          .locator('[data-group="graph"] [data-graph-turn-id]')
+          .evaluateAll((els) => els.map((el) => el.getAttribute('data-graph-turn-id')))
+
+      await openSession(page, 'turns4')
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]').length >= 4,
+        null,
+        { timeout: 15_000 },
+      )
+      let card = page.locator('[data-group="graph"]').first()
+      const directionButton = () => card.locator('[aria-label="切换会话图方向"]').first()
+      assert.equal(await directionButton().count(), 1, '会话图卡片标题栏没有方向按钮')
+      assert.equal(
+        (await directionButton().evaluate((el) => el.textContent ?? '')).trim(),
+        '最新在上',
+        '默认方向的提示不是「最新在上」',
+      )
+      const newestTop = await cardIds()
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await card.screenshot({ path: path.join(fix2236Dir, '02-最新在上.png') })
+
+      await directionButton().click()
+      await page.waitForFunction(
+        (first) => {
+          const el = document.querySelector('[data-group="graph"] [data-graph-turn-id]')
+          return el && el.getAttribute('data-graph-turn-id') !== first
+        },
+        newestTop[0],
+        { timeout: 5_000 },
+      )
+      const newestBottom = await cardIds()
+      assert.deepEqual(newestBottom, [...newestTop].reverse(), '方向按钮没有反转节点顺序')
+      assert.equal(
+        (await directionButton().evaluate((el) => el.textContent ?? '')).trim(),
+        '最新在下',
+        '切换后的提示不是「最新在下」',
+      )
+      await card.screenshot({ path: path.join(fix2236Dir, '02-最新在下.png') })
+      assert.equal(
+        await page.evaluate(() => localStorage.getItem('tandem.graphDirection.v1')),
+        'newest-bottom',
+        '方向没有写入全局存储',
+      )
+
+      // 全高展开：同一方向、同样带方向按钮。
+      await card.locator('[aria-label="全高显示会话图"]').click()
+      const full = page.locator('[data-graph-full]')
+      await full.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await full.locator('[aria-label="切换会话图方向"]').count(), 1, '全高会话图没有方向按钮')
+      const fullIds = await full
+        .locator('[data-graph-turn-id]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-graph-turn-id')))
+      assert.deepEqual(fullIds, newestBottom, '全高会话图没有跟随方向设置')
+      await full.getByRole('button', { name: /返回/ }).click()
+      await full.waitFor({ state: 'detached', timeout: 5_000 })
+
+      // 刷新后保持。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]').length >= 4,
+        null,
+        { timeout: 15_000 },
+      )
+      card = page.locator('[data-group="graph"]').first()
+      assert.deepEqual(await cardIds(), newestBottom, '刷新后方向没有保持')
+
+      // 侧栏悬停拓扑跟随同一设置（用有分叉的演示树；单会话树不弹悬停卡片）。
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 2, '演示子代理场景缺少会话')
+      const mainId = scenario.sessionIds[0]
+      await openSession(page, mainId)
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]').length > 0,
+        null,
+        { timeout: 15_000 },
+      )
+      const mainTop = (await cardIds())[0]
+      const row = page.locator(`[data-session-row][data-session-id="${mainId}"]`).first()
+      await row.waitFor({ timeout: 15_000 })
+      await page.mouse.move(4, 4)
+      await row.hover()
+      const topology = page.locator('[data-hover-card] [data-session-topology]').first()
+      await topology.waitFor({ state: 'visible', timeout: 10_000 })
+      const topoIds = await topology
+        .locator('[data-graph-turn-id]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-graph-turn-id')))
+      assert.ok(topoIds.length >= 2, '悬停拓扑没有节点')
+      assert.equal(topoIds[0], mainTop, '悬停拓扑没有跟随「最新在下」方向')
+      await page.mouse.move(4, 4)
+
+      // 恢复默认，避免共享 context 的方向设置泄漏给后续用例。
+      await openSession(page, 'turns4')
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]').length >= 4,
+        null,
+        { timeout: 15_000 },
+      )
+      card = page.locator('[data-group="graph"]').first()
+      await directionButton().click()
+      await page.waitForFunction(
+        () => localStorage.getItem('tandem.graphDirection.v1') === 'newest-top',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.evaluate(() => localStorage.removeItem('tandem.graphDirection.v1'))
     })
 }

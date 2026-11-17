@@ -11,6 +11,7 @@ import type { UiMessage } from '../../lib/types'
 import { graphFromMessages, graphFromTree } from './data'
 import { graphCardHeight, layoutSessionGraph, type GraphNode } from './layout'
 import { SessionGraphView } from './SessionGraphView'
+import { GraphDirectionButton } from './GraphDirectionButton'
 import { useSessionGraphTree } from './useGraphTree'
 import { isExecutingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 
@@ -37,13 +38,17 @@ export function SessionGraphCard({
   const running = isExecutingStatus(summary?.status)
   const waiting = isWaitingStatus(summary?.status)
   const tree = useSessionGraphTree(hostId, sessionId)
+  const direction = useUiStore((s) => s.graphDirection)
 
   const input = useMemo(() => {
     if (!tree || !sessionId) return null
     return graphFromTree(tree, sessionId)
   }, [tree, sessionId])
 
-  const layout = useMemo(() => (input ? layoutSessionGraph(input) : null), [input])
+  const layout = useMemo(
+    () => (input ? layoutSessionGraph(input, { direction }) : null),
+    [input, direction],
+  )
 
   const openSessionNode = useCallback(
     (targetId: string) => {
@@ -77,11 +82,13 @@ export function SessionGraphCard({
   return (
     <div className={full ? 'flex min-h-0 flex-1 flex-col' : undefined}>
       {full && (
-        <div className="mb-2 flex shrink-0 items-baseline gap-2">
+        <div className="mb-2 flex shrink-0 items-center gap-2">
           <Button size="inline" variant="ghost" onClick={onBack}>
             ← 返回
           </Button>
           <span className="text-[12px] text-text-soft">会话图</span>
+          <span className="flex-1" />
+          <GraphDirectionButton />
         </div>
       )}
       {layout.nodes.length === 0 ? (

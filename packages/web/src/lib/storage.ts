@@ -1,4 +1,4 @@
-import type { AccountSession, HostConfig, SplitState, Theme } from './types'
+import type { AccountSession, GraphDirection, HostConfig, SplitState, Theme } from './types'
 import { isValidFingerprint, normalizeFingerprint } from './relay'
 import { sanitizeSplitState } from './split'
 
@@ -13,6 +13,7 @@ const KEYS = {
   migrations: 'tandem.migrations.v1',
   split: 'tandem.split.v1',
   account: 'tandem.account.v1',
+  graphDirection: 'tandem.graphDirection.v1',
 } as const
 
 /** 原始字符串读写：localStorage 不可用（隐私模式等）时静默降级为无持久化。 */
@@ -129,6 +130,15 @@ export function saveTheme(theme: Theme): void {
   } catch {
     /* 忽略 */
   }
+}
+
+/** 会话图方向：全局记住（右栏卡片、全高视图与侧栏悬停拓扑共用），默认最新在上。 */
+export function loadGraphDirection(): GraphDirection {
+  return readRaw(KEYS.graphDirection) === 'newest-bottom' ? 'newest-bottom' : 'newest-top'
+}
+
+export function saveGraphDirection(direction: GraphDirection): void {
+  writeRaw(KEYS.graphDirection, direction)
 }
 
 export interface UiPrefs {

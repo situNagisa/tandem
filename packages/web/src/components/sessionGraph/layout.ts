@@ -9,8 +9,10 @@
  * - 其余会话的独有轮次从它们与主线的分叉点分到分支泳道；分叉点的来源会话在分叉点之后的
  *   轮次也是一条分支泳道。
  * - 子代理泳道挂在各自父轮上（主线轮的也要显示），最后一行汇回父会话的下一轮或轨道下一行。
- * - 行号在布局末尾统一翻转（flipRow），因此分支视觉上向上延伸、最新一轮在最上。
+ * - 行号在布局末尾按方向翻转（默认最新在上，flipRow），最新一轮在最上或最下。
  */
+
+import type { GraphDirection } from '../../lib/types'
 
 export interface GraphTurn {
   id: string
@@ -49,6 +51,8 @@ export interface GraphLayoutOptions {
   compact?: boolean
   /** 主线用哪个会话（缺省 = input.sessionId）；右栏传当前打开的会话，悬停浮层传正在查看的会话。 */
   trunkId?: string
+  /** 最新一轮在上（默认）或在下；只影响行号翻转，泳道与连线不变。 */
+  direction?: GraphDirection
 }
 
 export type GraphNodeKind = 'turn' | 'subagent-turn' | 'fork'
@@ -545,14 +549,17 @@ export function layoutSessionGraph(
   for (const edge of edges) rows = Math.max(rows, edge.fromRow + 1, edge.toRow + 1)
 
   /**
-   * 时间倒序（反馈1926#06）：布局仍按对话顺序计算，最后一次性翻转所有行号。
-   * 翻转后分支从父节点向上延伸，最新的一轮出现在最上。
+   * 行号方向（反馈2236#02）：默认时间倒序，布局仍按对话顺序计算、最后一次性翻转，
+   * 翻转后分支从父节点向上延伸、最新一轮在最上；选「最新在下」时保留对话顺序。
    */
+  const flip = (options.direction ?? 'newest-top') === 'newest-top'
   const flipRow = (value: number) => rows - 1 - value
-  for (const node of nodes) node.row = flipRow(node.row)
+  if (flip) for (const node of nodes) node.row = flipRow(node.row)
   for (const edge of edges) {
-    edge.fromRow = flipRow(edge.fromRow)
-    edge.toRow = flipRow(edge.toRow)
+    if (flip) {
+      edge.fromRow = flipRow(edge.fromRow)
+      edge.toRow = flipRow(edge.toRow)
+    }
     // 同泳道的竖线统一成从上往下（起点在上），几何断言与 tooltip 都不依赖方向。
     if (edge.fromLane === edge.toLane && edge.fromRow > edge.toRow) {
       const row = edge.fromRow

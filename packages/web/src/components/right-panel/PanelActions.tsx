@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { ArrowUpRight, Maximize2 } from 'lucide-react'
 import type { SessionSummary, Todo } from '@tandem/protocol'
 import { Button, IconButton } from '../ui/Button'
+import { GraphDirectionButton } from '../sessionGraph/GraphDirectionButton'
 import type { GroupId } from './shared'
 
 interface PanelActionsProps {
@@ -52,15 +53,18 @@ export function PanelActions({
     }
     if (id === 'graph') {
       return (
-        <IconButton
-          size="sm"
-          onClick={() => setGraphExpanded(true)}
-          label="全高显示会话图"
-          tooltip="展开"
-          className="-mr-1 size-6! [&_svg]:size-3"
-        >
-          <Maximize2 size={12} />
-        </IconButton>
+        <span className="flex items-center">
+          <GraphDirectionButton />
+          <IconButton
+            size="sm"
+            onClick={() => setGraphExpanded(true)}
+            label="全高显示会话图"
+            tooltip="展开"
+            className="-mr-1 size-6! [&_svg]:size-3"
+          >
+            <Maximize2 size={12} />
+          </IconButton>
+        </span>
       )
     }
     if (id === 'todos' && todos.length > 0) {

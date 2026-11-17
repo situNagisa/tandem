@@ -34,11 +34,12 @@ export function SessionTopology({
     [tree, activeSessionId],
   )
   const trunkId = currentInTree && activeSessionId ? activeSessionId : rootId
+  const direction = useUiStore((s) => s.graphDirection)
 
   const layout = useMemo(() => {
     if (!tree) return null
-    return layoutSessionGraph(graphFromTree(tree), { compact: true, trunkId })
-  }, [tree, trunkId])
+    return layoutSessionGraph(graphFromTree(tree), { compact: true, trunkId, direction })
+  }, [tree, trunkId, direction])
 
   const open = (node: GraphNode) => {
     onNavigate?.()

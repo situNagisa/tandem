@@ -1,7 +1,7 @@
 // 由 node scripts/feedback-adjust-icons.mjs 生成；勿手改。
 // 只含项目实际使用（`from 'lucide-react'` 导入）的图标，按 lucide 官方名索引。
 import type { LucideIcon } from 'lucide-react'
-import { Activity, AlertCircle, AlertTriangle, Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowRightLeft, ArrowUp, ArrowUpRight, BarChart3, Bell, BellRing, BookOpen, Bot, Brain, Bug, CalendarClock, Camera, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Circle, CircleDashed, CircleDot, CircleSlash, ClipboardPaste, Clock, Clock3, Code2, Columns2, Command, Copy, CornerDownLeft, CornerUpLeft, Download, Ellipsis, ExternalLink, Eye, EyeOff, FileCheck2, FileCode2, FileDiff, FileJson, FilePenLine, FilePlus2, FileText, FlaskConical, Folder, FolderGit2, FolderOpen, FolderTree, Gauge, GitBranch, GitFork, GitMerge, GitPullRequest, Globe, Globe2, Grid3x3, GripVertical, HardDrive, History, Image, ImageOff, ImagePlus, Inbox, Info, Kanban, KeyRound, Keyboard, Layers, LayoutList, Link2, ListChecks, ListTodo, ListTree, Lock, LogIn, LogOut, Map, Maximize2, Menu, MessageSquare, MessageSquarePlus, MessageSquareText, MessagesSquare, Mic, MinusCircle, Monitor, Moon, MousePointerClick, Network, Palette, PanelLeft, PanelLeftClose, PanelRight, PanelRightOpen, PanelTop, PanelsTopLeft, Paperclip, Pause, Pencil, PencilLine, Pin, PinOff, Play, PlayCircle, Plug, Plus, Power, PowerOff, Redo2, RefreshCw, RotateCcw, RotateCw, Save, ScanLine, ScanSearch, Scissors, ScrollText, Search, Send, Server, Settings, Share2, Shield, ShieldAlert, ShieldCheck, ShieldOff, ShieldX, SlidersHorizontal, Smartphone, Sparkles, Square, SquareTerminal, Stethoscope, Sun, Tablet, Terminal, TextSelect, Trash2, Type, Undo2, Unplug, Upload, Usb, UserPlus, UserRound, Users, Video, Wallet, Wand2, Webhook, Wifi, WrapText, Wrench, X, XCircle } from 'lucide-react'
+import { Activity, AlertCircle, AlertTriangle, Archive, ArchiveRestore, ArrowDown, ArrowDownWideNarrow, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowRightLeft, ArrowUp, ArrowUpRight, ArrowUpWideNarrow, BarChart3, Bell, BellRing, BookOpen, Bot, Brain, Bug, CalendarClock, Camera, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown, Circle, CircleDashed, CircleDot, CircleSlash, ClipboardPaste, Clock, Clock3, Code2, Columns2, Command, Copy, CornerDownLeft, CornerUpLeft, Download, Ellipsis, ExternalLink, Eye, EyeOff, FileCheck2, FileCode2, FileDiff, FileJson, FilePenLine, FilePlus2, FileText, FlaskConical, Folder, FolderGit2, FolderOpen, FolderTree, Gauge, GitBranch, GitFork, GitMerge, GitPullRequest, Globe, Globe2, Grid3x3, GripVertical, HardDrive, History, Image, ImageOff, ImagePlus, Inbox, Info, Kanban, KeyRound, Keyboard, Layers, LayoutList, Link2, ListChecks, ListTodo, ListTree, Lock, LogIn, LogOut, Map, Maximize2, Menu, MessageSquare, MessageSquarePlus, MessageSquareText, MessagesSquare, Mic, MinusCircle, Monitor, Moon, MousePointerClick, Network, Palette, PanelLeft, PanelLeftClose, PanelRight, PanelRightOpen, PanelTop, PanelsTopLeft, Paperclip, Pause, Pencil, PencilLine, Pin, PinOff, Play, PlayCircle, Plug, Plus, Power, PowerOff, Redo2, RefreshCw, RotateCcw, RotateCw, Save, ScanLine, ScanSearch, Scissors, ScrollText, Search, Send, Server, Settings, Share2, Shield, ShieldAlert, ShieldCheck, ShieldOff, ShieldX, SlidersHorizontal, Smartphone, Sparkles, Square, SquareTerminal, Stethoscope, Sun, Tablet, Terminal, TextSelect, Trash2, Type, Undo2, Unplug, Upload, Usb, UserPlus, UserRound, Users, Video, Wallet, Wand2, Webhook, Wifi, WrapText, Wrench, X, XCircle } from 'lucide-react'
 
 export interface AdjustIconEntry {
   /** lucide 官方名（kebab-case，也是 `lucide-<name>` class 的后缀）。 */
@@ -16,12 +16,14 @@ export const ADJUST_ICONS: ReadonlyArray<AdjustIconEntry> = [
   { name: 'archive', keywords: '归档 存档', Icon: Archive },
   { name: 'archive-arrow-up', keywords: '', Icon: ArchiveRestore },
   { name: 'arrow-down', keywords: '下 向下', Icon: ArrowDown },
+  { name: 'arrow-down-wide-narrow', keywords: '排序 方向 最新在上', Icon: ArrowDownWideNarrow },
   { name: 'arrow-left', keywords: '左 返回', Icon: ArrowLeft },
   { name: 'arrow-left-right', keywords: '切换 交换', Icon: ArrowLeftRight },
   { name: 'arrow-right', keywords: '右 前进', Icon: ArrowRight },
   { name: 'arrow-right-left', keywords: '切换 交换', Icon: ArrowRightLeft },
   { name: 'arrow-up', keywords: '上 向上', Icon: ArrowUp },
   { name: 'arrow-up-right', keywords: '打开 外链 新窗口', Icon: ArrowUpRight },
+  { name: 'arrow-up-wide-narrow', keywords: '排序 方向 最新在下', Icon: ArrowUpWideNarrow },
   { name: 'bell', keywords: '通知 提醒', Icon: Bell },
   { name: 'bell-ring', keywords: '通知 提醒 响铃', Icon: BellRing },
   { name: 'book-open', keywords: '文档 wiki 手册', Icon: BookOpen },

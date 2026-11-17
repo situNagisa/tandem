@@ -70,6 +70,27 @@ describe('layoutSessionGraph（整棵树共用一张拓扑）', () => {
     expect(rows).toEqual([...rows].sort((a, b) => a - b))
   })
 
+  it('方向切换只翻转行号：最新在下时主线按对话顺序从上到下，泳道与连线不变', () => {
+    const newestTop = layoutSessionGraph(tree('R', demoTree()))
+    const newestBottom = layoutSessionGraph(tree('R', demoTree()), { direction: 'newest-bottom' })
+    expect(newestBottom.nodes.filter((node) => node.trunk).map((node) => node.id)).toEqual([
+      'r1',
+      'r2',
+      'r3',
+      'r4',
+      'r5',
+      'r6',
+    ])
+    expect(topDown(newestBottom)[0]).toBe('r1')
+    // 同一轮在两种方向下的行号互为中心对称；泳道不变。
+    for (const node of newestBottom.nodes) {
+      const mirror = newestTop.nodes.find((item) => item.key === node.key)!
+      expect(node.row).toBe(newestBottom.rows - 1 - mirror.row)
+      expect(node.lane).toBe(mirror.lane)
+    }
+    expect(newestBottom.edges.length).toBe(newestTop.edges.length)
+  })
+
   it('同一棵树在主会话与分叉里节点与连线完全相同，只有主线不同', () => {
     const fromMain = layoutSessionGraph(tree('R', demoTree()))
     const fromFork = layoutSessionGraph(tree('F', demoTree()))

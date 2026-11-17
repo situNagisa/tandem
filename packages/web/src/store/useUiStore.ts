@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { MemoryScope } from '@tandem/protocol'
 import {
   DEFAULT_SESSION_FILTER,
+  type GraphDirection,
   type SessionFilter,
   type SessionTarget,
   type SettingsTab,
@@ -15,6 +16,7 @@ import { boardPaneSessionId, columnCount, equalWeights, MAX_SPLIT_PANES, rowCoun
 import {
   loadCollapsedProjects,
   loadExpandedOlderProjects,
+  loadGraphDirection,
   loadPinnedProjects,
   loadSidebarWidth,
   loadSplitState,
@@ -22,6 +24,7 @@ import {
   loadUiPrefs,
   saveCollapsedProjects,
   saveExpandedOlderProjects,
+  saveGraphDirection,
   savePinnedProjects,
   saveSidebarWidth,
   saveSplitState,
@@ -132,7 +135,11 @@ interface UiState {
   /** 「分屏打开…」会话选择弹层。 */
   splitPickerOpen: boolean
 
+  /** 会话图方向：最新在上 / 最新在下，全局记住。 */
+  graphDirection: GraphDirection
+
   setTheme: (theme: Theme) => void
+  setGraphDirection: (direction: GraphDirection) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
@@ -280,6 +287,7 @@ export const useUiStore = create<UiState>((set, get) => {
 
   return {
     theme: loadTheme(),
+  graphDirection: loadGraphDirection(),
   sidebarCollapsed: prefs.sidebarCollapsed ?? false,
   sidebarWidth: loadSidebarWidth(),
   collapsedProjects: loadCollapsedProjects(),
@@ -348,6 +356,10 @@ export const useUiStore = create<UiState>((set, get) => {
     saveTheme(theme)
     set({ theme })
     applyTheme(theme)
+  },
+  setGraphDirection: (graphDirection) => {
+    saveGraphDirection(graphDirection)
+    set({ graphDirection })
   },
   setSidebarCollapsed: (collapsed) => {
     saveUiPrefs({ sidebarCollapsed: collapsed })

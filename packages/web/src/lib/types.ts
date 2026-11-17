@@ -250,6 +250,8 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
+/** 会话图方向：最新一轮在上（默认）或在下。 */
+export type GraphDirection = 'newest-top' | 'newest-bottom'
 export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'gateway' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals' | 'secrets' | 'routing'
   | 'accounts'
 
