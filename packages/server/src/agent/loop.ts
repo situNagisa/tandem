@@ -41,7 +41,7 @@ import {
   estimateDivisionPlanCost,
   executorTaskPrompt,
   recordRouteSavings,
-  routePlanPrompt,
+  routePlanPrompts,
   routeSignalsOf,
   routingSettingsOf,
   type RouteSignals,
@@ -347,7 +347,7 @@ export async function runTurn(
 
       let built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
       const withRoutePlan = (text: string) =>
-        routePlan?.mode === 'division' ? `${text}\n\n${routePlanPrompt(routePlan)}` : text;
+        routePlan?.mode === 'division' ? `${text}\n\n${routePlanPrompts(routePlan).join('\n\n')}` : text;
       let system = withRoutePlan(built.system);
       let requestMessages = buildRequestMessages();
       let contextEstimate = measure(system, requestMessages);

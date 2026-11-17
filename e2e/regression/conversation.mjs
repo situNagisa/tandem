@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'conversation'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 51, 52, 53, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 74, 75, 84, 85, 86, 87, 88, 89, 90, 93, 94, 95, 96, 97, 98, 100, 112, 113, 113.1, 113.2, 113.3, 113.4, 113.5, 113.6, 113.7, 114.1, 114.2, 114.3, 114.4, 114.5, 114.6, 114.7, 114.8, 114.9]
+export const order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 51, 52, 53, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 74, 75, 84, 85, 86, 87, 88, 89, 90, 93, 94, 95, 96, 97, 98, 100, 112, 113, 113.1, 113.2, 113.3, 113.4, 113.5, 113.6, 113.7, 113.8, 113.85, 114.1, 114.2, 114.3, 114.4, 114.5, 114.6, 114.7, 114.8, 114.9]
 
 /**
  * 从下一帧起逐帧记录消息区状态（每帧一项，含还没挂上任何行的帧），
@@ -1873,6 +1873,27 @@ desktop('消息用量只保留一行小字（#7-03）', async (page) => {
       await page.keyboard.press('Escape')
     })
 
+desktop('用量卡悬停显示按模型的金额明细与差额（反馈1724#06）', async (page) => {
+      await openSession(page, 'mdmath')
+      const total = page.locator('[data-usage-total]').first()
+      await total.waitFor()
+      await total.hover()
+      const card = page.locator('[data-usage-breakdown]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const text = await card.innerText()
+      assert.match(text, /mock\s*1/i, `缺少按模型的行：${text}`)
+      assert.match(text, /2 次/, `缺少调用次数：${text}`)
+      assert.match(text, /\$0\.0070/, `模型小计不对：${text}`)
+      assert.match(text, /其他（压缩、评审等）/, `缺少差额行：${text}`)
+      assert.match(text, /\$0\.113/, `差额金额不对：${text}`)
+      assert.match(text, /合计[\s\S]*\$0\.12/, `合计与总量不一致：${text}`)
+      assert.match(text, /历史不重算/, '缺少历史金额不重算的说明')
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-06-usage-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+    })
+
 desktop('消息耗时显示在用量行末尾，轮次大纲汇总模型与工具耗时（A）', async (page) => {
       await openSession(page, 'long')
       const summary = page.locator('[data-message-id="a40"] [data-usage-summary]')
@@ -3352,4 +3373,52 @@ desktop('跳转结束后 3 秒无 scrollTop 写入', async (page) => {
       assert.equal(late, 0, `跳转结束后 3 秒内仍有 ${late} 次 scrollTop 写入`)
       await stop()
     })
+desktop('公式渲染：行内与块级用 KaTeX、代码里的 $ 保持源码（反馈1724#04）', async (page) => {
+      await openSession(page, 'mdmath')
+      // KaTeX 按需加载：等公式 chunk 渲染完成。
+      await page.waitForFunction(
+        () => document.querySelectorAll('.md-math .katex').length >= 2,
+        null,
+        { timeout: 20_000 },
+      )
+      const info = await page.evaluate(() => {
+        const block = document.querySelector('.md-math-block')
+        const inline = document.querySelector('.md-math-inline')
+        const pre = document.querySelector('.chat-code pre')
+        const md = block?.closest('.md.chat-md')
+        return {
+          katex: document.querySelectorAll('.md-math .katex').length,
+          inlineText: inline?.textContent ?? '',
+          blockWidth: block?.getBoundingClientRect().width ?? 0,
+          blockScrollWidth: block?.scrollWidth ?? 0,
+          blockOverflowX: block ? getComputedStyle(block).overflowX : '',
+          columnWidth: md?.getBoundingClientRect().width ?? 0,
+          preText: pre?.textContent ?? '',
+          preKatex: !!pre?.querySelector('.katex'),
+          inlineCode: [...document.querySelectorAll('.md.chat-md p code')].map((el) => el.textContent ?? ''),
+          rawTexVisible: (document.querySelector('.md.chat-md')?.innerText ?? '').includes('\\begin{aligned}'),
+        }
+      })
+      assert.ok(info.katex >= 2, `公式没有渲染成 KaTeX（${info.katex}）`)
+      assert.ok(info.inlineText.includes('E'), '行内公式内容缺失')
+      assert.equal(info.blockOverflowX, 'auto', '块级公式没有在公式内横向滚动')
+      assert.ok(
+        info.blockScrollWidth > info.blockWidth + 4,
+        `过宽公式没有超出可滚动区域（${info.blockScrollWidth} / ${info.blockWidth}）`,
+      )
+      assert.ok(
+        info.blockWidth <= info.columnWidth + 1,
+        `块级公式撑开了正文列（${info.blockWidth} > ${info.columnWidth}）`,
+      )
+      assert.ok(info.preText.includes('echo $HOME'), `代码块里的 $ 被改动：${info.preText}`)
+      assert.equal(info.preKatex, false, '代码块里也渲染了公式')
+      assert.ok(info.inlineCode.some((text) => text.includes('$HOME')), '行内代码里的 $ 被当成公式')
+      assert.equal(info.rawTexVisible, false, '公式仍然显示 TeX 源码')
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-04-math-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+    })
+
+
 }

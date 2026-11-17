@@ -1,5 +1,14 @@
 # 进度
 
+## 迭代 82（2026-11-17）反馈1724：公式渲染、用户消息换行、模型菜单取向关闭、分支弹层、金额明细、粘贴越界
+- [x] 原话「会话区的公式无法正常显示」：`remark-math` 解析行内 `$…$` 与块级 `$$…$$`，`MathTex` 按需加载 KaTeX（JS 79.5KB gzip、CSS 8KB gzip、字体 250KB woff2，首屏不加载）；代码块与行内代码里的 `$` 保持源码；块级公式内部横滚不撑开正文列；助手与用户气泡共用（R82）。
+- [x] 原话「单回车发送后无法表示」：用户气泡启用「换行即换行」（`remarkHardBreaks`），发送原文与助手渲染不变，输入框预览一致（R82）。
+- [x] 原话「”原生“删掉…取向增加一个列表项：关闭」：模型菜单删除「原生」，分工/取向成组并用分隔线与思考强度分开；取向「关闭」= 不注入「取向 · 本轮」段、分工照常（服务端拆成两段注入）；旧 `routeNative=true` 迁移为取向关闭、分工保持原值，旧设置 `native` 并入取向默认关闭（R61）。
+- [x] 原话「分支只有一个但整个列表变得很大」：分支弹层从写死 `h-[220px]` 改回按内容自适应、上限 260px 滚动（55bf761 引入，R52 复发）。
+- [x] 原话「计算金额的机制是什么」：核对 06 会话（`~/.tandem` 副本）：opus-5-5 23 次 2,099,973 输入 / 60,172 输出 × $5/$25 = $12.0042；sonnet-5-5 48 次 1,555,637 / 44,712 × $3/$15 = $5.3376，其中 2 次按当时 $0.12/$0.6 记账，合计 $5.2222；会话总 $17.2264 → 界面 $17.23（用户消息估算 $0.0216 不计入）。新增 `/api/sessions/:id/usage` 与用量卡悬停明细（R25）。
+- [x] window.onerror「Selection points outside of document」：粘贴按原始字符数推算光标，CRLF 归一成 LF 后越界；改用 `state.replaceSelection`（R82）。
+- [x] 检查：单测 `markdownMath`/`session-usage`/`model-routing`/`session-route-migration`；回归反馈1724#01/#04/#05/#06 与粘贴、分工路由、模型菜单；截图 `/tmp/fix-1724/`；`node scripts/check.mjs --skip-smoke`。
+
 ## 迭代 81（2026-11-14）回归按功能拆分，支持按改动选跑与偶发重跑
 - [x] 拆分：`e2e/regression.mjs`（1.5 万行、223 条）改为入口，用例按功能拆到 `e2e/regression/<功能>.mjs`（conversation / composer / sidebar / session-graph / mobile / settings / model-accounts / routing / sandbox / workspace / board / feedback / workstation / shell），夹具与页面助手抽到 `e2e/regression/lib/`（common、mock-provider、seeds、page、flaky）；`compare-cases.mjs` 校验拆分前后用例名一一对应（223 = 223）。每条用例带拆分前的全局序号，入口按序号排序执行，共享 context/localStorage 的用例顺序与拆分前一致。
 - [x] 按改动选跑：`node e2e/regression.mjs --changed` 用 `git diff --name-only main...HEAD` + 工作区改动，经 `e2e/regression/map.mjs` 映射到功能文件；未命中映射或命中共享层（lib/入口/scripts/protocol/store/ui）回落全量；`scripts/check.mjs --changed` 透传。

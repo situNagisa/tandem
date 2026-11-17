@@ -1,6 +1,6 @@
 # 反馈根因台账
 
-> 更新：2026-11-13。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
+> 更新：2026-11-17。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
 
 | 编号 | 根因 | 次数 | 防线位置 |
 |---|---|---|---|
@@ -26,14 +26,13 @@
 | R22 | 语义色/代码高亮饱和度不足、警告像褪色 | 2 | design P03/P04；ui-audit hardcoded-warning-color；regression 对比度/上下文分类色 |
 | R23 | 按主机切换割裂会话列表、缩进过大 | 2 | design P15；regression 侧栏按主机分组/缩进 ≤8px |
 | R24 | 价格模型不符合中转倍率实际 | 1 | 官方价 × 账号 × 分组倍率；单测 pricing；regression 计算式 |
-| R25 | 轮次关键数据缺少就地入口、指标口径不清 | 2 | 轮次 tooltip + 固定上下文着色；单测 turnUsage；regression 大纲用量/无切换 |
+| R25 | 轮次关键数据缺少就地入口、指标口径不清 | 3 | 轮次 tooltip + 固定上下文着色；单测 turnUsage；regression 大纲用量/无切换；会话花费悬停明细（各模型 token × 单价、来源/估算、差额、历史不重算，`GET /api/sessions/:id/usage`，单测 `session-usage`，反馈1724#06） |
 | R26 | 思考强度档位硬编码；上下文一律按 200K（原生 1M 型号分母偏低、Opus/Sonnet 4.6 的 1M 变体没有入口）；型号按旧名前缀判定思考协议，新代际被误判为不支持；adaptive 型号仍显示旧 budget 标签（·2K/8K/16K/32K）、缺 xhigh，且未传 `display: summarized` 导致思考文本为空 | 4 | `providers/capabilities.ts` `claudeThinkingMode`/`parseClaudeModel` 按家族+版本；`anthropic.ts` 只接受 adaptive 的 400 改用 adaptive 重试、不计降级；降级通知只在去掉思考参数重试成功后发出，内容为脱敏后的上游原话（`summarizeUpstreamRejection`）；adaptive 按官方 effort 表（low/medium/high/xhigh/max，无预算标签，只有支持 disabled 的型号有「关」）并显式 `display: summarized`；未选时显示官方默认；单测 `model-families`、`anthropic-thinking`、`effort-fallback`、`capabilities`；regression 厂商档位（Sonnet 5.5 无 ·2K、含 xhigh）；`claudeLongContext`（原生 1M / 4.6 需 `context-1m-2025-08-07` beta / 4.5 仅 200K），会话 `longContext` 与分组默认，`contextWindowForModel` 统一分母/压缩阈值，单测 `anthropic-long-context`/`context`，regression「1M 上下文开关」 |
 | R27 | 固定操作重排阅读列表导致乱飞 | 1 | 固定不重排、原位图钉；regression 阅读顺序/滚动位置 |
 | R28 | 辅助视图做成独立悬停浮层，跨空白即收起 | 1 | 同一大纲 Alt/点击两用；regression Alt 切换 |
 | R29 | 设备权限/占用不可见，用户无处修复 | 1 | 只读探测 + 修复说明 + 深度检测；单测 serial-access；regression 设备行/修复 |
 | R31 | 选项文案口语化、术语不统一 | 2 | `lib/routeLabels.ts` + 术语表；regression 执行方式/委派倾向文案 |
 | R32 | 发送前看不到输入 token/上下文代价 | 1 | `lib/tokens.ts` + 底栏估算；单测；regression 输入 token/发送后占比 |
-| R33 | 缓存失效切换没有成本提示 | 1 | 已由 R41 的确认框取代；regression 切换确认 |
 | R34 | 输入框不支持常见 Markdown 编辑 | 1 | `markdownInput.ts` + 着色层；单测/regression |
 | R35 | 主标签塞入次要属性导致芯片冗长 | 2 | 芯片只显示模型名，无强度小点；regression 芯片/aria-label |
 | R36 | 滚动条两套并存、占宽或压内容 | 3 | `ui/OverlayScrollbar`（z-index 按所在浮层设置）；ui-audit custom-scrollbar；regression 唯一滚动条/gutter；regression 反馈2102#03 滚动条不压弹窗 |
@@ -51,7 +50,7 @@
 | R48 | 长会话反馈截图克隆整页 DOM 卡顿 | 1 | 样式白名单 + 视口外跳过 + 最深容器 + 原生截图；regression 性能断言 |
 | R49 | 阅读列 shrink-wrap，切换页面抖动 | 1 | `w-full min-w-0 max-w` + `scrollbar-gutter: stable`；regression Wiki 宽度差 ≤1px |
 | R50 | 换主机塞进主机胶囊，语义错位 | 2 | 待定状态 + 自动打开文件夹 + 输入禁用/取消；regression 换主机流程 |
-| R52 | 弹层动画覆盖 Radix transform，首帧抖动 | 2 | 动画只在内层 + 触发器不缩放 + 异步固定尺寸；ui-audit content-transform；regression 15 帧 ≤1px |
+| R52 | 弹层动画覆盖 Radix transform，首帧抖动；为防异步内容抖动把高度写成固定值，内容少时留下大块空白 | 3 | 动画只在内层 + 触发器不缩放；高度按内容自适应、超过上限再滚动，加载态只占一行；ui-audit content-transform；regression 15 帧 ≤1px、分支弹层一项时高度紧凑（反馈1724#01） |
 | R53 | 子代理会话关联不稳、层级用子/孙文字 | 1 | `parentToolUseId`/`tool_result.subagent` + 层级树 + 只读子会话；regression |
 | R54 | 审批卡像重框表单/停靠输入框上方 | 2 | 审批改为对话消息 + Claude 样式；regression 内联/Esc/发送即拒绝/小屏 |
 | R55 | 登录与添加主机流程缺失 | 2 | LoginGate + 无主机空状态 + 一次性令牌 + 持久连接；调试版回环不带 token 自动补凭据、401 不重试；e2e 登录门/安装/免 token 进入 |
@@ -60,7 +59,7 @@
 | R58 | 消息缺少发送时间/时间基准；用量行常显占位/极小金额显示 $0.0000 | 3 | `MessageTime` + 用量行悬停显示 + 相对时间；`formatCost` 极小金额显示 `<$0.0001`；单测 format/user-usage；regression 反馈1601#03 |
 | R59 | 账号/Key 按主机各存一份 | 1 | 账号级 profiles + Key 只存工作站 + 主机签名代理；单测 account-profiles；e2e workstation |
 | R60 | 账号余额只能去各家网站看 | 1 | 工作站用 Key 查询 + 平台解析 + 5 分钟缓存；单测 balance；e2e mock |
-| R61 | 用户明确说过/决定过的要求没有落实 | 1 | design 原则 + `scripts/decisions-check.mjs` 逐条检查；接入 `check.mjs` |
+| R61 | 用户明确说过/决定过的要求没有落实 | 2 | design 原则 + `scripts/decisions-check.mjs` 逐条检查；接入 `check.mjs`；2026-11-17 按反馈1724#02 删除「原生」、取向增加「关闭」，decisions-check 改写为 `route-labels`/`route-bias-off`，regression 取向关闭注入段与菜单分隔线 |
 | R62 | 本地乐观消息按内容匹配误删排队气泡 | 1 | 只替换内容一致的排队消息 + 唯一排队兜底；regression 排队消息 |
 | R64 | 设计 token 拼错/未定义，浏览器静默丢弃声明（弹层背景变透明、边框消失） | 1 | ui-audit `undefined-css-var`：源码里的 `var(--x)` 必须在 CSS 有定义，或属于运行时注入（`setProperty`/style 对象自动识别，`--radix-*` 显式白名单，`--graph-lane-` 等模板前缀按同前缀定义校验）；浮层/对话框截图核对（浅色+深色） |
 | R65 | 单价按型号名前缀硬编码，新代际查不到价格（花费显示 —）；未收录型号不按同家族估算 | 1 | `usage.ts` `builtinPriceFor`：前缀表 → Claude 家族+版本 → GPT 基础款最近一代，估算时标 `estimatedFrom`；单价优先级账号自定义 > 内置；单测 `model-families`、`pricing` |
@@ -77,3 +76,4 @@
 | R78 | 子代理快照订阅记录与视图生命周期脱节：主会话视图关闭后订阅残留，重开时不再请求快照，子代理视图停在骨架屏；从分叉视图进入时数据挂在树根视图而当前视图找不到 | 1 | `closeSessionView` 退订只属于该视图的子代理；`subscribeChild` 对空条目重新订阅；`ensureSubagent` 补开树根视图；regression 反馈1603#08 |
 | R79 | 侧栏项目分组平铺所有会话，很久不用的会话一直占位、列表越堆越长 | 1 | `sessionListUtils` 的 `OLDER_SESSION_MS` / `isOlderSession`（>7 天默认收起，固定/运行中/待审批/未读例外）；`expandedOlderProjects` 按项目记住；decisions-check `sidebar-old-sessions-collapsed`；单测 sessionListUtils；regression 反馈1603#01 |
 | R80 | 反馈「调整」把逐次拖动当成多条改动；选择器写运行时自动 id，恢复副本后挂不上 | 1 | `FeedbackAdjust` 的 pushOp 合并同一元素相邻改尺寸/移动（留首尾值）；`feedbackCapture` 的 `isAutoGeneratedId` 跳过 radix-/React useId；regression「调整说明：同元素连续改尺寸/移动合并为一条、选择器跳过 Radix/React 自动 id」 |
+| R82 | Markdown 渲染与粘贴按原始文本处理：公式按源码显示、单换行被折叠，粘贴按字符数推算光标（CRLF 归一后选区越界） | 2 | `lib/markdownMath.ts` + `MathTex`（KaTeX 按需加载、块级内部横滚、用户消息 hard break）、`ComposerEditor` 用 `state.replaceSelection`；单测 `markdownMath`；regression 公式/用户消息单换行/粘贴 CRLF（反馈1724#04 #05 + window.onerror） |

@@ -28,7 +28,6 @@ interface Options {
   onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
   onRouteBiasChange?: (bias: RoutePreference) => void
   onDelegationChange?: (strategy: DelegationStrategy) => void
-  onRouteNativeChange?: (native: boolean) => void
   onEffortChange?: (effort: ReasoningEffort, remember?: boolean) => void
   summary: SessionSummary | null
   activeHostId: string | null
@@ -62,7 +61,6 @@ export function useComposerModelControls({
   onModelChange,
   onRouteBiasChange,
   onDelegationChange,
-  onRouteNativeChange,
   onEffortChange,
   summary,
   activeHostId,
@@ -250,17 +248,6 @@ export function useComposerModelControls({
     }
   }
 
-  /** 原生模式：不注入分工/取向说明，工具不减，模型自己决定是否派子代理。 */
-  const applyRouteNative = (native: boolean) => {
-    if (sessionless) {
-      onRouteNativeChange?.(native)
-      return
-    }
-    if (activeHostId && summary) {
-      void updateSession(activeHostId, summary.id, { routeNative: native })
-    }
-  }
-
   const changeEffort = (next: ReasoningEffort, remember = true) => {
     if (remember) rememberEffort(next)
     setLocalEffort(next)
@@ -342,7 +329,6 @@ export function useComposerModelControls({
     changeAutoRoute,
     applyDelegation,
     applyRouteBias,
-    applyRouteNative,
     changeEffort,
     switchLabel,
     switchCost,

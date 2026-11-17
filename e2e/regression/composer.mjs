@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'composer'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 55, 68, 70, 71, 72, 73, 76, 77, 83, 105, 107]
+export const order = [38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 55, 68, 70, 71, 72, 73, 76, 77, 83, 105, 107, 114, 115, 116]
 
 export function register(checks, ctx) {
   const {
@@ -114,7 +114,7 @@ desktop('输入框：token 估算、切换确认与分工取向合并（反馈8#
       const input = page.locator('[aria-label="消息输入框"]')
       await input.waitFor()
 
-      // 1601#04：分工与取向并入模型菜单；原生开关在最上面，没有再「记住为会话偏好」，芯片只显示模型名。
+      // 1601#04 / 反馈1724#02：分工与取向并入模型菜单（原生已删除），没有再「记住为会话偏好」，芯片只显示模型名。
       const routeChip = page.locator('button[aria-label^="选择模型："]').first()
       assert.doesNotMatch(
         (await routeChip.getAttribute('aria-label')) ?? '',
@@ -130,10 +130,32 @@ desktop('输入框：token 估算、切换确认与分工取向合并（反馈8#
       const modelMenu = await openModel()
       const modelMenuText = await modelMenu.innerText()
       await page.screenshot({ path: '/tmp/fb8-after/03.png' })
-      for (const label of ['原生', '分工', '取向']) {
+      for (const label of ['分工', '取向']) {
         assert.ok(modelMenuText.includes(label), `模型菜单缺少「${label}」：${modelMenuText}`)
       }
+      assert.ok(!modelMenuText.includes('原生'), `模型菜单不应再有「原生」：${modelMenuText}`)
       assert.ok(!modelMenuText.includes('记住为会话偏好'), '模型菜单不应再有「记住为会话偏好」')
+      // 分工、取向是一组，其下一条分隔线与思考强度分开（反馈1724#02）。
+      const footerOrder = await modelMenu.evaluate((el) => {
+        const footer = el.querySelector('[data-menu-footer]') ?? el
+        const rows = [...footer.children].map((child) => ({
+          separator: child.getAttribute('role') === 'separator' || child.hasAttribute('data-menu-separator'),
+          text: (child.textContent ?? '').trim(),
+        }))
+        return rows
+      })
+      const biasIndex = footerOrder.findIndex((row) => row.text.startsWith('取向'))
+      const separatorIndex = footerOrder.findIndex((row, index) => index > biasIndex && row.separator)
+      const effortIndex = footerOrder.findIndex((row) => row.text.startsWith('思考强度'))
+      assert.ok(biasIndex >= 0, '模型菜单底部缺少取向')
+      assert.ok(
+        separatorIndex > biasIndex && (effortIndex < 0 || separatorIndex < effortIndex),
+        `分工/取向下没有分隔线：${JSON.stringify(footerOrder)}`,
+      )
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-02-model-menu-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
       await modelMenu.getByRole('menuitem', { name: /^分工/ }).hover()
       const delegationMenu = page.locator('[role="menu"][aria-label="分工"]').first()
       await delegationMenu.waitFor({ state: 'visible', timeout: 5_000 })
@@ -150,7 +172,7 @@ desktop('输入框：token 估算、切换确认与分工取向合并（反馈8#
       const biasMenu = page.locator('[role="menu"][aria-label="取向"]').first()
       await biasMenu.waitFor({ state: 'visible', timeout: 5_000 })
       const biasText = await biasMenu.innerText()
-      for (const label of ['省钱', '均衡', '质量优先']) {
+      for (const label of ['关闭', '省钱', '均衡', '质量优先']) {
         assert.ok(biasText.includes(label), `取向缺少「${label}」：${biasText}`)
       }
       await page.screenshot({ path: '/tmp/fb8-after/01.png' })
@@ -545,6 +567,53 @@ desktop('用户气泡完整渲染 Markdown：标题降级、列表、代码块�
       await page.screenshot({ path: '/tmp/md-cm/assistant-light.png' })
       await page.evaluate(() => document.documentElement.classList.add('dark'))
       await page.screenshot({ path: '/tmp/md-cm/assistant-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+    })
+
+desktop('用户消息单换行按换行显示、发送原文不变（反馈1724#05）', async (page) => {
+      await openSession(page, 'mdmath')
+      const bubble = page.locator('[data-msg-bubble]').filter({ hasText: '第一行不加空行' }).first()
+      await bubble.waitFor()
+      const seeded = await bubble.evaluate((el) => ({
+        br: el.querySelectorAll('br').length,
+        text: el.innerText,
+      }))
+      assert.ok(seeded.br >= 1, '用户气泡没有把单个换行渲染为换行')
+      assert.match(seeded.text, /第一行不加空行\n第二行紧跟其后/, `气泡换行不正确：${seeded.text}`)
+
+      // 输入框预览同样按行显示；发送给模型的原文保持单个换行。
+      const source = '单行甲\n单行乙'
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.fill(source)
+      await page.waitForFunction(
+        () => (document.querySelector('[data-testid="composer-input"]')?.getAttribute('data-value') ?? '') === '单行甲\n单行乙',
+        null,
+        { timeout: 5_000 },
+      )
+      const lines = await page.evaluate(() => document.querySelectorAll('.composer-cm .cm-line').length)
+      assert.ok(lines >= 2, `输入框预览没有按行显示（${lines} 行）`)
+      await page.getByRole('button', { name: '发送消息' }).click()
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('[data-msg-bubble]')].some((el) =>
+            (el.textContent ?? '').includes('单行乙'),
+          ),
+        null,
+        { timeout: 20_000 },
+      )
+      const saved = await api(base, token, '/api/sessions/mdmath')
+      const sent = saved.messages.filter((m) => m.role === 'user').at(-1)?.content?.[0]?.text ?? ''
+      assert.equal(sent, '单行甲\n单行乙', `发送给模型的原文被改动：${JSON.stringify(sent)}`)
+      const lastBubble = page.locator('[data-msg-bubble]').last()
+      const rendered = await lastBubble.evaluate((el) => ({
+        br: el.querySelectorAll('br').length,
+        text: el.innerText,
+      }))
+      assert.ok(rendered.br >= 1, '新发送的用户消息没有按换行显示')
+      assert.match(rendered.text, /单行甲\n单行乙/, `新气泡换行不正确：${rendered.text}`)
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-05-user-newline-dark.png' })
       await page.evaluate(() => document.documentElement.classList.remove('dark'))
     })
 
@@ -1014,8 +1083,8 @@ desktop('菜单项只有单行标题，多模型分组下列表可滚动且底�
         await routeMenu.waitFor()
         assert.match(
           (await routeMenu.locator('[data-menu-footer]').innerText()),
-          /原生[\s\S]*分工[\s\S]*取向/,
-          '模型菜单底部缺少原生/分工/取向',
+          /分工[\s\S]*取向/,
+          '模型菜单底部缺少分工/取向',
         )
         await routeMenu.getByRole('menuitem', { name: new RegExp(`^${group}`) }).hover()
         const sub = page.locator(`[role="menu"][aria-label="${group}"]`).first()
@@ -1269,6 +1338,35 @@ desktop('粘贴一次同一张图片只生成一个附件', async (page) => {
       assert.equal(await page.getByRole('button', { name: '移除图片' }).count(), 1, '同一张图片被重复添加')
     })
 
+desktop('粘贴含 CRLF 的文本不报错且只插入一次（反馈1724 window.onerror）', async (page) => {
+      await openSession(page, 'long')
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.waitFor()
+      // 上一个用例可能留下草稿：先清空，断言只针对这次粘贴。
+      await input.fill('')
+      await page.waitForFunction(
+        () => (document.querySelector('[data-testid="composer-input"]')?.getAttribute('data-value') ?? '') === '',
+        null,
+        { timeout: 5_000 },
+      )
+      await input.click()
+      const errorsBefore = (page.__errors ?? []).length
+      await input.evaluate((el) => {
+        const data = new DataTransfer()
+        data.setData('text/plain', 'a\r\nb')
+        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+      })
+      await page.waitForFunction(
+        () => (document.querySelector('[data-testid="composer-input"]')?.getAttribute('data-value') ?? '') === 'a\nb',
+        null,
+        { timeout: 5_000 },
+      )
+      const errors = (page.__errors ?? []).slice(errorsBefore)
+      assert.deepEqual(errors, [], `粘贴 CRLF 文本时报错：${errors.join('\n')}`)
+      const value = await page.locator('[data-testid="composer-input"]').getAttribute('data-value')
+      assert.equal(value, 'a\nb', `粘贴内容被重复插入：${JSON.stringify(value)}`)
+    })
+
 desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
@@ -1390,4 +1488,37 @@ desktop('反馈2102#08：环境条主机触发器用显示器图标，与文件�
       assert.equal(await hostTrigger.locator('svg.lucide-folder, svg.lucide-folder-open').count(), 0, '主机触发器仍是文件夹图标')
       assert.equal(await page.locator('[data-env-bar] button:has(svg.lucide-folder-open)').count(), 1, '文件夹触发器缺少文件夹图标')
     })
+
+desktop('分支弹层只有一个分支时高度紧凑（反馈1724#01）', async (page) => {
+      await openSession(page, 'long')
+      const branch = page
+        .locator('main button[aria-haspopup="menu"]')
+        .filter({ has: page.locator('svg.lucide-git-branch') })
+        .first()
+      await branch.click()
+      const panel = page.locator('[data-portal-layer]').filter({ hasText: '新建分支' }).first()
+      await panel.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(300)
+      const info = await panel.evaluate((el) => {
+        const box = el.getBoundingClientRect()
+        const menu = el.querySelector('[aria-label="切换分支"]')
+        return {
+          height: box.height,
+          rows: el.querySelectorAll('[role="menuitem"]').length,
+          menuHeight: menu?.getBoundingClientRect().height ?? 0,
+          menuMaxHeight: menu ? getComputedStyle(menu).maxHeight : '',
+          overflowY: menu ? getComputedStyle(menu).overflowY : '',
+        }
+      })
+      assert.equal(info.rows, 2, `分支弹层应只有当前分支与「新建分支…」（${info.rows}）`)
+      assert.ok(info.height < 170, `只有一个分支时弹层仍然很高：${info.height}px`)
+      assert.equal(info.overflowY, 'auto', '分支列表没有滚动容器')
+      assert.match(info.menuMaxHeight, /260px/, `分支列表缺少高度上限：${info.menuMaxHeight}`)
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-01-branch-menu-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await page.keyboard.press('Escape')
+    })
+
 }

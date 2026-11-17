@@ -163,8 +163,8 @@ export type DelegationStrategy = 'more' | 'less' | 'none';
 // ---------- 自动模型路由 ----------
 /** 候选模型的档位：快速（省钱）/ 均衡 / 强力（质量）。 */
 export type ModelTier = 'fast' | 'balanced' | 'power';
-/** 取向：选执行者/子代理用什么模型。省钱 / 均衡 / 质量优先；全局默认见 ModelRoutingSettings.preference，会话 routeBias 可覆盖。 */
-export type RoutePreference = 'cost' | 'balanced' | 'quality';
+/** 取向：选执行者/子代理用什么模型。省钱 / 均衡 / 质量优先；关闭 = 不注入取向说明，分工照常（执行者按均衡档）。 */
+export type RoutePreference = 'cost' | 'balanced' | 'quality' | 'off';
 /** 候选池的一项（账号 › 分组 › 模型），由用户在「设置 → 模型路由」勾选。 */
 export interface RouteCandidate {
   profileId: string;
@@ -226,8 +226,6 @@ export interface ModelRoutingSettings {
   preference: RoutePreference;
   /** 可选：用小模型判断难度（一次很小的请求，默认关闭）。 */
   judge?: boolean;
-  /** 可选：新会话默认原生模式（不注入分工/取向说明，工具不减，模型自己决定是否派子代理）。 */
-  native?: boolean;
   /** 可选：分工路由配置；模型菜单选「分工」时使用。 */
   division?: DivisionRoutingSettings;
 }
@@ -288,7 +286,7 @@ export interface AutoRouteSavings {
   /** 分工路由：按角色拆分。 */
   byRole?: Partial<Record<RouteRole, RouteRoleUsage>>;
 }
-/** 单轮路由模式：单代理 / 整单交执行者 / 多代理协作（由分工×取向与规则得出）；原生 = 不注入任何分工/取向说明。 */
+/** 单轮路由模式：单代理 / 整单交执行者 / 多代理协作（由分工×取向与规则得出）。`native` 是旧版本原生回合的历史值，新计划不再产生。 */
 export type TurnRouteMode = 'direct' | 'cheap' | 'division' | 'native';
 /** 发送一条消息时的一次性分工/取向覆盖；输入框选择已直接写入会话，这里只供确认卡「改为单代理」等内部路径使用。 */
 export interface TurnRouteOverride {
@@ -337,6 +335,8 @@ export interface RoutePlan {
   domain: RouteDomain;
   /** 是否命中领域专长映射。 */
   specialist: boolean;
+  /** 本轮取向；`off` 表示不注入取向说明（分工照常）。 */
+  bias?: RoutePreference;
   /** 预计执行者/专长模型（用于提示行）。 */
   executorModel?: string;
   specialistModel?: string;
@@ -376,8 +376,6 @@ export interface SessionSummary {
   longContext?: boolean;
   /** 分工；缺省按 Host 设置（默认 less）。 */
   delegation?: DelegationStrategy;
-  /** 原生模式：不注入分工/取向/路由提示词，不做路由规则分类改写；工具不减，Task 仍可用。 */
-  routeNative?: boolean;
   status: SessionStatus;
   /** 模型请求因网络错误/超时连续失败后进入「等待网络」：下一次重试时间与原因。 */
   retryInfo?: RetryInfo;
@@ -428,6 +426,30 @@ export interface Usage {
   reasoningTokens?: number;  // 输出中的推理 token（OpenAI reasoning_tokens 等，已含在 outputTokens 内）
   costUsd?: number;
   keyId?: string;            // 本轮实际使用的分组 Key id（多 Key 切换后便于统计）
+}
+
+/** 会话用量按模型拆分的明细行（用量卡悬停提示）。costUsd 是记账时按当时单价折算的金额，历史不重算。 */
+export interface SessionUsageRow {
+  model: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+}
+
+/** GET /api/sessions/:id/usage -> SessionUsageBreakdown */
+export interface SessionUsageBreakdown {
+  /** 按模型汇总（花费从高到低）。 */
+  rows: SessionUsageRow[];
+  /** 计入会话总量但不在任何消息上的部分（压缩、AI 评审、更早的分页消息等）。 */
+  residual: SessionUsageRow;
+  total: Usage;
+  /** 当前生效单价（每百万 token，已乘账号/分组倍率），按会话当前账号/分组解析。 */
+  prices: Record<string, ModelPriceInfo>;
+  /** 至少一行是按同家族最近代际估算的型号（价格表未收录该代）。 */
+  estimated: boolean;
 }
 
 // ---------- 配额预估与会话交接 ----------
@@ -539,8 +561,6 @@ export interface CreateSessionInput {
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
   delegation?: DelegationStrategy;
-  /** 原生模式：不注入分工/取向说明；缺省跟随设置「模型路由 → 新会话默认」。 */
-  routeNative?: boolean;
   /** 上下文窗口：true=1M，false=200K；缺省按分组默认或模型能力。 */
   longContext?: boolean;
   title?: string;
@@ -548,7 +568,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'routeNative' | 'longContext' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'longContext' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。

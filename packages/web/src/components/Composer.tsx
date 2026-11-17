@@ -62,7 +62,6 @@ export function Composer({
   onRouteBiasChange,
   delegation: delegationProp,
   onDelegationChange,
-  routeNative: routeNativeProp,
   onRouteNativeChange,
   onPermissionModeChange,
   effort: effortProp,
@@ -122,7 +121,6 @@ export function Composer({
     routedModel,
     effectiveDelegation,
     effectiveRouteBias,
-    routeNative,
     currentProfileId,
     currentGroupId,
     contextUsed,
@@ -141,7 +139,6 @@ export function Composer({
     permissionModeProp,
     routeBiasProp,
     delegationProp,
-    routeNativeProp,
     effortProp,
     longContextProp,
     hostIdProp,
@@ -245,7 +242,6 @@ export function Composer({
     changeAutoRoute,
     applyDelegation,
     applyRouteBias,
-    applyRouteNative,
     changeEffort,
     switchLabel,
     switchCost,
@@ -256,7 +252,6 @@ export function Composer({
     onModelChange,
     onRouteBiasChange,
     onDelegationChange,
-    onRouteNativeChange,
     onEffortChange,
     summary,
     activeHostId,
@@ -465,10 +460,8 @@ export function Composer({
           expectedPct={expectedPct}
           effectiveDelegation={effectiveDelegation}
           effectiveRouteBias={effectiveRouteBias}
-          routeNative={routeNative}
           onChangeDelegation={applyDelegation}
           onChangeRouteBias={applyRouteBias}
-          onChangeRouteNative={applyRouteNative}
           uiProfiles={uiProfiles}
           currentProfileId={currentProfileId}
           currentGroupId={currentGroupId}

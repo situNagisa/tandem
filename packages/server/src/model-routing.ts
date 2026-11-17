@@ -21,7 +21,7 @@ import type {
 import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
 import { completeText } from './providers/index.js';
 import { costOfUsage, priceForModel, type Price } from './usage.js';
-import { normalizeRoutingSettings } from './routing-settings.js';
+import { effectiveBias, normalizeRoutingSettings } from './routing-settings.js';
 import type { SessionRecord, StoredProfile } from './types.js';
 import type { Host } from './host.js';
 
@@ -43,11 +43,13 @@ const UNCERTAIN = [
 ];
 
 const FAST_THRESHOLD: Record<RoutePreference, number> = {
+  off: 32,
   cost: 50,
   balanced: 32,
   quality: 16,
 };
 const BALANCED_THRESHOLD: Record<RoutePreference, number> = {
+  off: 68,
   cost: 82,
   balanced: 68,
   quality: 46,
@@ -259,11 +261,12 @@ export function pickRoute(input: {
   state?: SessionRecord['routeState'];
 }): ModelRouteDecision | undefined {
   const { settings, signals, state } = input;
-  const scores = scoreRoute(signals, settings.preference, state);
+  const preference = effectiveBias(settings.preference);
+  const scores = scoreRoute(signals, preference, state);
   const baseIndex =
-    scores.complexity <= FAST_THRESHOLD[settings.preference]
+    scores.complexity <= FAST_THRESHOLD[preference]
       ? 0
-      : scores.complexity <= BALANCED_THRESHOLD[settings.preference]
+      : scores.complexity <= BALANCED_THRESHOLD[preference]
         ? 1
         : 2;
   scores.tierBias = state?.tierBias ?? 0;
@@ -283,7 +286,7 @@ export function pickRoute(input: {
     }
     return true;
   });
-  const selected = nearestTier(metaEligible, targetIndex, settings.preference);
+  const selected = nearestTier(metaEligible, targetIndex, preference);
   if (!selected.meta || !selected.tier) return undefined;
   if (state?.lastTrigger === 'failure') scores.escalated = true;
   if (state?.lastTrigger === 'simple-success') scores.downgraded = true;
@@ -537,6 +540,7 @@ function strongestMeta(metas: RouteCandidateMeta[], contextTokens: number): Rout
 
 /** 每个取向对应的子代理/执行者档位（未绑定时使用；绑定优先）。 */
 const BIAS_TIER: Record<RoutePreference, ModelTier> = {
+  off: 'balanced',
   cost: 'fast',
   balanced: 'balanced',
   quality: 'power',
@@ -556,6 +560,7 @@ export function resolveDivisionAssignment(
   domain?: RouteDomain,
   bias: RoutePreference = settings.preference,
 ): RouteCandidateMeta | undefined {
+  bias = effectiveBias(bias);
   const division = settings.division ?? {};
   const metas = candidateMetas(host, settings);
   const contextTokens = 0;
@@ -652,12 +657,10 @@ export function planTurnRoute(
   const delegation = host.delegationFor(rec);
   const text = input.text.trim();
   if (!text) return undefined;
-  // 原生模式：不做规则分类，不注入任何分工/取向说明；提示行只标「原生（未注入）」。
-  if (rec.routeNative === true) {
-    return { mode: 'native', reason: '不注入分工与取向说明，模型自行决定是否派子代理', domain: 'general', specialist: false };
-  }
   if (delegation === 'none') return undefined;
-  const bias = host.routeBiasFor(rec);
+  const biasRaw = host.routeBiasFor(rec);
+  // 取向关闭：不注入取向说明，规划与执行者档位按均衡处理。
+  const bias = effectiveBias(biasRaw);
   const signals = routeSignalsOf(host, rec, { content: [{ type: 'text', text }] }, 0, rec.routeState?.lastFailed === true);
   const complexity = scoreRoute(signals, bias, rec.routeState).complexity;
   const division = settings.division;
@@ -674,6 +677,7 @@ export function planTurnRoute(
   const base: Omit<RoutePlan, 'mode' | 'reason'> = {
     domain,
     specialist,
+    bias: biasRaw,
     ...(executorMeta ? { executorModel: executorMeta.candidate.model } : {}),
     ...(specialist && specialistMeta ? { specialistModel: specialistMeta.candidate.model } : {}),
   };
@@ -732,21 +736,35 @@ export function planTurnRoute(
 }
 
 
-/** 分工时注入规划者系统提示：只在这一轮生效。 */
-export function routePlanPrompt(plan: RoutePlan): string {
+/** 分工时注入的规划者说明（分工段）：只在这一轮生效。 */
+export function divisionPlanPrompt(plan: RoutePlan): string {
   if (plan.mode !== 'division') return '';
   const lines = [
     '[多代理协作 · 本轮]',
     `分类理由：${plan.reason}。`,
     '你是规划者，主会话模型和上下文保持不变。先用只读工具定位，写出 2–5 步计划；只把可独立执行的机械子任务派发出去，不要为了派发而派发。',
     '用 Task 派发时，prompt 必须自包含：目标、相关文件路径、明确步骤、验收命令、不要修改的范围；不要把整段对话粘贴进去。子代理只回传最后一段摘要。',
+    '收到摘要后由你判断：继续派发、自己只读补查、或收尾。执行失败两次就自己接管或换模型，不要反复重试同一子任务。',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+/** 取向段：执行者/专长用哪个模型。取向关闭时整段不注入（分工照常）。 */
+export function biasPlanPrompt(plan: RoutePlan): string {
+  if (plan.mode !== 'division' || plan.bias === 'off') return '';
+  const lines = [
+    '[取向 · 本轮]',
     plan.executorModel ? `- 执行者：role="executor"（${plan.executorModel}），跑命令、装依赖、批量机械修改、生成/运行测试。` : '',
     plan.specialistModel
       ? `- 专长执行者：role="specialist" domain="${plan.domain}"（${plan.specialistModel}），领域相关的修改优先交给它。`
       : '',
-    '收到摘要后由你判断：继续派发、自己只读补查、或收尾。执行失败两次就自己接管或换模型，不要反复重试同一子任务。',
   ];
   return lines.filter(Boolean).join('\n');
+}
+
+/** 本轮追加到用户消息后的路由说明，顺序固定：先分工、后取向。 */
+export function routePlanPrompts(plan: RoutePlan): string[] {
+  return [divisionPlanPrompt(plan), biasPlanPrompt(plan)].filter((text) => text.trim());
 }
 
 /** 整单交执行者时交给执行者的固定说明；提示行展开与真实请求共用这一份。 */
@@ -773,7 +791,8 @@ export function routePlanInjection(
   if (plan.mode === 'division') {
     return [
       { name: '分工', content: host.delegationPrompt(rec) },
-      { name: '多代理协作 · 本轮', content: routePlanPrompt(plan) },
+      { name: '多代理协作 · 本轮', content: divisionPlanPrompt(plan) },
+      { name: '取向 · 本轮', content: biasPlanPrompt(plan) },
     ].filter((item) => item.content.trim());
   }
   if (plan.mode === 'cheap') {
@@ -787,7 +806,7 @@ export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: s
   const settings = routingSettingsOf(host);
   if (!settings) return 0;
   const role: RouteRole = plan.specialist ? 'specialist' : 'executor';
-  const meta = resolveDivisionAssignment(host, settings, role, plan.domain, bias);
+  const meta = resolveDivisionAssignment(host, settings, role, plan.domain, effectiveBias(bias));
   const price = meta?.price;
   if (!price) return 0;
   const inputTokens = prompts.reduce((sum, prompt) => sum + Math.ceil(prompt.length / 3), 0);
@@ -826,7 +845,7 @@ export function chooseAutoRoute(host: Host, rec: SessionRecord, signals: RouteSi
   if (!settings) return undefined;
   const state = ensureRouteState(rec);
   const decision = pickRoute({
-    settings: { ...settings, preference: host.routeBiasFor(rec) },
+    settings: { ...settings, preference: effectiveBias(host.routeBiasFor(rec)) },
     signals,
     metas: candidateMetas(host, settings),
     state,
@@ -872,6 +891,7 @@ export function noteInvalidOutput(rec: SessionRecord): void {
 
 export function noteTurnEnd(rec: SessionRecord, reason: 'done' | 'interrupted' | 'error', preference: RoutePreference, hadFailure: boolean): void {
   const state = ensureRouteState(rec);
+  const bias = effectiveBias(preference);
   if (reason === 'error') state.lastFailed = true;
   else if (reason === 'done') state.lastFailed = false;
   const complexity = rec.route?.scores.complexity;
@@ -879,7 +899,7 @@ export function noteTurnEnd(rec: SessionRecord, reason: 'done' | 'interrupted' |
     reason === 'done' &&
     !hadFailure &&
     complexity !== undefined &&
-    complexity <= FAST_THRESHOLD[preference];
+    complexity <= FAST_THRESHOLD[bias];
   if (simple) {
     state.simpleSuccesses += 1;
     if (state.simpleSuccesses >= 3) {

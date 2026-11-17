@@ -95,7 +95,6 @@ export function NewSessionView() {
   const [effortPick, setEffortPick] = useState<ReasoningEffort | undefined>(loadLastEffort)
   const [effort, setEffort] = useState<ReasoningEffort | undefined>(effortPick)
   const [delegation, setDelegation] = useState<DelegationStrategy>('less')
-  const [routeNative, setRouteNative] = useState(false)
   /** 上下文窗口：只存用户显式选择；undefined 时按分组/型号默认。 */
   const [longContext, setLongContext] = useState<boolean | undefined>(undefined)
   const [worktree, setWorktree] = useState(false)
@@ -133,7 +132,6 @@ export function NewSessionView() {
         .then((settings) => {
           if (cancelled) return
           if (settings.defaultDelegation) setDelegation(settings.defaultDelegation)
-          if (settings.modelRouting?.native) setRouteNative(true)
         })
         .catch(() => {})
     }
@@ -252,7 +250,6 @@ export function NewSessionView() {
           ...(effort ? { effort } : {}),
           ...(longContext !== undefined ? { longContext } : {}),
           delegation,
-          routeNative,
           ...(worktree && gitRepo === 'yes'
             ? { worktree: { ...(worktreeBranch.trim() ? { branch: worktreeBranch.trim() } : {}) } }
             : {}),
@@ -331,11 +328,9 @@ export function NewSessionView() {
           onLongContextChange={setLongContext}
           routeBias={routeBias}
           delegation={delegation}
-          routeNative={routeNative}
           onModelChange={chooseAccount}
           onRouteBiasChange={setRouteBias}
           onDelegationChange={setDelegation}
-          onRouteNativeChange={setRouteNative}
           onPermissionModeChange={setPermissionMode}
           onEffortChange={(next, remember = true) => {
             setEffort(next)

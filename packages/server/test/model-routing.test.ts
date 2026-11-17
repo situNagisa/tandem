@@ -10,6 +10,7 @@ import {
   noteTurnEnd,
   planTurnRoute,
   recentToolInputs,
+  routePlanInjection,
   resolveDivisionAssignment,
   routePlanText,
   type RouteSignals,
@@ -51,6 +52,7 @@ function fakeHost(
     estimateQuota: () => ({}),
     delegationFor: () => options.delegation ?? 'more',
     routeBiasFor: () => options.bias ?? 'balanced',
+    delegationPrompt: () => '# 分工：适度（less，默认）',
   } as unknown as Host;
 }
 
@@ -196,13 +198,30 @@ test('分工关闭：不规划，任何取向都不派发', () => {
   }
 });
 
-test('原生：不做规则分类、不注入，提示行为「原生（未注入）」', () => {
-  const native = { ...rec(complexText), routeNative: true };
-  // 原生优先于分工关闭：仍出提示行，但不带任何注入原文。
-  const plan = planTurnRoute(fakeHost(routing, { delegation: 'none' }), native, { text: complexText });
-  assert.equal(plan?.mode, 'native');
-  assert.equal(plan?.injected, undefined);
-  assert.equal(plan ? routePlanText(plan) : '', '原生（未注入）');
+test('取向关闭：不注入取向段，分工照常；规划按均衡处理', () => {
+  const host = fakeHost(routing, { bias: 'off', delegation: 'more' });
+  const off = planTurnRoute(host, rec(complexText, 70_000), { text: complexText });
+  assert.equal(off?.bias, 'off');
+  assert.equal(off?.mode, 'division');
+  const injected = routePlanInjection(host, rec(complexText), off!, complexText);
+  const names = injected.map((item) => item.name);
+  assert.deepEqual(names, ['分工', '多代理协作 · 本轮']);
+  assert.ok(injected.some((item) => item.content.includes('# 分工：')));
+  // 取向关闭不等于省钱：机械小任务不会整单交执行者。
+  const text = '安装依赖并跑通构建';
+  assert.notEqual(planTurnRoute(host, rec(text), { text })?.mode, 'cheap');
+});
+
+test('取向均衡：注入分工、规划与取向三段', () => {
+  const host = fakeHost(routing, { bias: 'balanced', delegation: 'more' });
+  const plan = planTurnRoute(host, rec(complexText, 70_000), { text: complexText });
+  const names = routePlanInjection(host, rec(complexText), plan!, complexText).map((item) => item.name);
+  assert.deepEqual(names, ['分工', '多代理协作 · 本轮', '取向 · 本轮']);
+});
+
+test('旧原生回合仍可展示（历史值）', () => {
+  const legacy = { mode: 'native' as const, reason: '旧数据', domain: 'general' as const, specialist: false };
+  assert.equal(routePlanText(legacy), '原生（未注入）');
 });
 
 test('多步批量任务分工；专长领域命中', () => {

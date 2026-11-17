@@ -36,7 +36,6 @@ interface Options {
   permissionModeProp: import('@tandem/protocol').PermissionMode | undefined
   routeBiasProp: RoutePreference | undefined
   delegationProp: import('@tandem/protocol').DelegationStrategy | undefined
-  routeNativeProp: boolean | undefined
   effortProp: ReasoningEffort | undefined
   longContextProp: boolean | undefined
   hostIdProp: string | undefined
@@ -52,7 +51,6 @@ export function useComposerStore({
   permissionModeProp,
   routeBiasProp,
   delegationProp,
-  routeNativeProp,
   effortProp,
   longContextProp,
   hostIdProp,
@@ -137,7 +135,6 @@ export function useComposerStore({
   const effectiveRouteBias = sessionless
     ? (routeBiasProp ?? globalRouteBias)
     : (summary?.routeBias ?? globalRouteBias)
-  const routeNative = sessionless ? (routeNativeProp ?? false) : summary?.routeNative === true
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const contextUsed = summary?.context?.usedTokens ?? 0
@@ -192,7 +189,6 @@ export function useComposerStore({
     routedModel,
     effectiveDelegation,
     effectiveRouteBias,
-    routeNative,
     currentProfileId,
     currentGroupId,
     contextUsed,

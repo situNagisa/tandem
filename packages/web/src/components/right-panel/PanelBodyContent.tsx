@@ -1,6 +1,6 @@
 import { Circle, CircleCheck, CircleDot } from 'lucide-react'
 import type { MemoryFile, SessionSummary, Todo } from '@tandem/protocol'
-import type { ConnectionState } from '../../lib/types'
+import type { ConnectionState, HostConfig } from '../../lib/types'
 import { prettyModel } from '../../lib/modelName'
 import { quotaLine } from '../../lib/quota'
 import { cn } from '../../lib/cn'
@@ -9,6 +9,7 @@ import { EmptyState } from '../ui/EmptyState'
 import { Button } from '../ui/Button'
 import { Markdown } from '../Markdown'
 import { Spinner } from '../ui/Spinner'
+import { HoverCard } from '../ui/HoverCard'
 import { AgentsCard } from './AgentsCard'
 import { ContextCard } from './ContextCard'
 import { WikiCard } from './WikiCard'
@@ -16,6 +17,7 @@ import { SessionGraphCard } from '../sessionGraph/SessionGraphCard'
 import type { useContextBreakdown } from '../chat/ContextMeter'
 import { CHANGE_MARK, type GroupId } from './shared'
 import { PanelDetails } from './PanelDetails'
+import { UsageBreakdownCard } from './UsageBreakdownCard'
 
 interface PanelBodyContentProps {
   id: GroupId
@@ -41,7 +43,8 @@ interface PanelBodyContentProps {
   copyCwd: () => void
   copied: boolean
   hostStatus: ConnectionState
-  host: { name: string } | null
+  host: HostConfig | null
+  sessionId: string | null
   openSettings: (tab: 'secrets') => void
 }
 
@@ -70,6 +73,7 @@ export function PanelBodyContent({
   copied,
   hostStatus,
   host,
+  sessionId,
   openSettings,
 }: PanelBodyContentProps) {
   const TODO_ICONS = {
@@ -187,9 +191,23 @@ export function PanelBodyContent({
       return (
         <div>
           <div className="text-[12px] text-muted">总花费</div>
-          <div className="mt-0.5 font-mono text-[19px] leading-6 tabular-nums text-text">
-            {formatCost(usage?.costUsd)}
-          </div>
+          <HoverCard
+            label="用量明细"
+            width={400}
+            side="left"
+            align="start"
+            disabled={!host || !sessionId}
+            content={() =>
+              host && sessionId ? <UsageBreakdownCard host={host} sessionId={sessionId} /> : null
+            }
+          >
+            <div
+              className="mt-0.5 font-mono text-[19px] leading-6 tabular-nums text-text"
+              data-usage-total
+            >
+              {formatCost(usage?.costUsd)}
+            </div>
+          </HoverCard>
           {summary?.autoRoute && (summary.routeSavings?.savedUsd ?? 0) > 0 && (
             <div className="mt-1 text-[12px] leading-4 text-muted" data-route-savings>
               自动路由节省约 {formatCost(summary.routeSavings?.savedUsd)}

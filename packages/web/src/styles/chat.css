@@ -486,6 +486,39 @@
   max-width: 100%;
   min-width: 0;
 }
+
+/* 数学公式（KaTeX）：块级公式在公式内部横向滚动，宽度不撑开正文列。 */
+.md.chat-md .md-math-inline {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: baseline;
+}
+.md.chat-md .md-math-block {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0.75em 0;
+  padding: 0.15em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+.md.chat-md .md-math-block .katex-display {
+  margin: 0;
+}
+.md.chat-md .md-math-block .katex-display > .katex {
+  display: inline-block;
+  min-width: max-content;
+}
+/* 加载中/解析失败时显示的源码：等宽、次要色，不抢排版。 */
+.md.chat-md .md-math[data-math-pending] {
+  font-family: var(--t-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  color: var(--t-text-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .md.chat-md .md-table-wrap {
   margin-top: 1em;
   margin-bottom: 1em;

@@ -29,6 +29,7 @@ const TIER_LABEL: Record<ModelTier, string> = {
 }
 
 const PREFERENCE_OPTIONS: Array<{ value: RoutePreference; label: string; title: string }> = [
+  { value: 'off', label: '关闭', title: '不注入取向说明；分工照常，执行者按均衡档选择' },
   { value: 'cost', label: '省钱', title: '更多任务走快速档，只在明显困难时升级' },
   { value: 'balanced', label: '均衡', title: '默认档位，简单任务省钱，复杂任务自动升级' },
   { value: 'quality', label: '质量优先', title: '更多任务走强档，只在很简单的任务上省钱' },
@@ -260,29 +261,13 @@ export function ModelRoutingSection() {
       <section data-setting-id="routing.preference" className="settings-item space-y-1 px-3 py-1">
         <SettingRow
           label="取向默认"
-          hint="影响档位阈值；预算将尽时会进一步向快速档倾斜。"
+          hint="影响档位阈值与执行者档位；预算将尽时会进一步向快速档倾斜。选「关闭」不注入取向说明，分工照常。"
         >
           <SegmentedControl
             value={routing.preference}
             options={PREFERENCE_OPTIONS.map(({ value, label }) => ({ value, label }))}
             onChange={(value) => persist({ ...routing, preference: value })}
             aria-label="取向默认"
-          />
-        </SettingRow>
-        <SettingRow
-          label="新会话默认"
-          hint="选「原生」时新会话不注入分工与取向说明，模型照常拥有全部工具（含 Task），自己决定是否派子代理；仍可在模型菜单里逐个会话改。"
-        >
-          <SegmentedControl
-            value={routing.native ? 'native' : 'routing'}
-            options={[
-              { value: 'routing', label: '分工与取向' },
-              { value: 'native', label: '原生' },
-            ]}
-            onChange={(value) =>
-              persist({ ...routing, ...(value === 'native' ? { native: true } : { native: undefined }) })
-            }
-            aria-label="新会话默认"
           />
         </SettingRow>
         <SettingRow

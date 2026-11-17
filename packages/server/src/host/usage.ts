@@ -6,6 +6,8 @@ import type {
   ListModelsInput,
   ModelInfo,
   ModelPriceInfo,
+  SessionUsageBreakdown,
+  SessionUsageRow,
 } from '@tandem/protocol';
 import { buildSystemPromptParts } from '../agent/prompt.js';
 import { normalizeContextSettings } from '../context-settings.js';
@@ -37,8 +39,8 @@ export function calibrateContext(host: Host, rec: SessionRecord, context: Contex
 export function promptOptions(host: Host, rec: SessionRecord,
     opts: { allowTask?: boolean; hookContext?: string } = {}) {
   const allowTask = opts.allowTask !== false;
-  // 原生模式不注入分工/取向说明；Task 本身仍可用，模型自己决定是否派子代理。
-  const withDelegationPrompt = allowTask && rec.routeNative !== true;
+  // 取向关闭只影响取向说明（见 routePlanInjection），分工说明照常注入。
+  const withDelegationPrompt = allowTask;
   return {
     allowTask,
     planMode: rec.permissionMode === 'plan',
@@ -329,4 +331,71 @@ export async function modelCapabilities(host: Host, profileId: string,
   info = applyModelCapabilities(info, profile.kind, profile.modelCapabilities);
   host.capabilityCache.set(key, { at: Date.now(), info: { ...info } });
   return info;
+}
+
+/**
+ * 会话用量按模型拆分：从消息上的 usage 汇总，差额单列「其他（压缩/评审等）」。
+ * 单价按当前账号/分组解析，只用于解释计算式；各行金额是记账时的值，历史不重算。
+ */
+export function sessionUsageBreakdown(host: Host, rec: SessionRecord): SessionUsageBreakdown {
+  const rows = new Map<string, SessionUsageRow>();
+  const round = (value: number) => Math.round(value * 1e8) / 1e8;
+  for (const message of rec.messages) {
+    if (message.role !== 'assistant' || !message.usage) continue;
+    const model = message.model || rec.model;
+    const usage = message.usage;
+    const row = rows.get(model) ?? {
+      model,
+      calls: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: 0,
+    };
+    row.calls += 1;
+    row.inputTokens += usage.inputTokens || 0;
+    row.outputTokens += usage.outputTokens || 0;
+    row.cacheReadTokens += usage.cacheReadTokens || 0;
+    row.cacheWriteTokens += usage.cacheWriteTokens || 0;
+    row.costUsd = round(row.costUsd + (usage.costUsd || 0));
+    rows.set(model, row);
+  }
+  const list = [...rows.values()].sort((a, b) => b.costUsd - a.costUsd);
+  const sum = list.reduce(
+    (acc, row) => ({
+      inputTokens: acc.inputTokens + row.inputTokens,
+      outputTokens: acc.outputTokens + row.outputTokens,
+      cacheReadTokens: acc.cacheReadTokens + row.cacheReadTokens,
+      cacheWriteTokens: acc.cacheWriteTokens + row.cacheWriteTokens,
+      costUsd: round(acc.costUsd + row.costUsd),
+    }),
+    { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 },
+  );
+  const residual: SessionUsageRow = {
+    model: '其他',
+    calls: 0,
+    inputTokens: Math.max(0, (rec.usage.inputTokens || 0) - sum.inputTokens),
+    outputTokens: Math.max(0, (rec.usage.outputTokens || 0) - sum.outputTokens),
+    cacheReadTokens: Math.max(0, (rec.usage.cacheReadTokens || 0) - sum.cacheReadTokens),
+    cacheWriteTokens: Math.max(0, (rec.usage.cacheWriteTokens || 0) - sum.cacheWriteTokens),
+    costUsd: round(Math.max(0, (rec.usage.costUsd || 0) - sum.costUsd)),
+  };
+  const profile = rec.profileId ? host.profileFor(rec.profileId, rec.groupId) : undefined;
+  const prices: Record<string, import('@tandem/protocol').ModelPriceInfo> = {};
+  let estimated = false;
+  for (const row of list) {
+    const resolved = resolvePriceForModel(profile, row.model);
+    if (!resolved) continue;
+    prices[row.model] = {
+      ...priceInfoFor(resolved.price, profile?.kind ?? 'openai-compatible'),
+      source: resolved.source,
+      ...(resolved.estimatedFrom ? { estimatedFrom: resolved.estimatedFrom } : {}),
+      ...(resolved.official ? { officialInput: resolved.official.input, officialOutput: resolved.official.output } : {}),
+      ...(resolved.accountMultiplier ? { accountMultiplier: resolved.accountMultiplier } : {}),
+      ...(resolved.groupMultiplier ? { groupMultiplier: resolved.groupMultiplier } : {}),
+    };
+    if (resolved.estimatedFrom) estimated = true;
+  }
+  return { rows: list, residual, total: { ...rec.usage }, prices, estimated };
 }

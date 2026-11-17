@@ -162,6 +162,7 @@ import {
   calibrateContext,
   contextFor,
   injectionsFor,
+  sessionUsageBreakdown,
   listModels,
   modelCapabilities,
   modelPrices,
@@ -176,7 +177,6 @@ import {
   delegationPrompt,
   presetSummary,
   routeBiasFor,
-  routeNativeFor,
   runSubagent,
   subagentConfig,
   taskToolDescription,
@@ -499,6 +499,10 @@ export class Host {
     return contextFor(this, rec);
   }
 
+  usageBreakdown(rec: SessionRecord): import('@tandem/protocol').SessionUsageBreakdown {
+    return sessionUsageBreakdown(this, rec);
+  }
+
   refreshEnv(id: string): Promise<void> {
     return refreshEnv(this, id);
   }
@@ -679,16 +683,12 @@ export class Host {
     return routeBiasFor(this, rec);
   }
 
-  routeNativeFor(rec: SessionRecord): boolean {
-    return routeNativeFor(rec);
-  }
-
   presetSummary(cwd: string): string {
     return presetSummary(this, cwd);
   }
 
-  taskToolDescription(cwd: string, native = false): string {
-    return taskToolDescription(this, cwd, native);
+  taskToolDescription(cwd: string): string {
+    return taskToolDescription(this, cwd);
   }
 
   delegationKey(rec: SessionRecord): PromptTemplateKey {
@@ -795,7 +795,6 @@ export class Host {
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
-    routeNative?: unknown;
     title?: unknown;
     worktree?: unknown;
   }): Promise<SessionRecord> {
@@ -817,7 +816,6 @@ export class Host {
       archived?: unknown;
       effort?: unknown;
       delegation?: unknown;
-      routeNative?: unknown;
       cwd?: unknown;
     },
   ): SessionRecord | undefined {
