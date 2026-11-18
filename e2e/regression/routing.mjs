@@ -160,9 +160,9 @@ desktop('自动模型路由：简单快速、困难强力、失败升级、连�
           modelRouting: {
             preference: 'balanced',
             candidates: [
-              { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
-              { profileId: 'p-route', model: 'route-mid', tier: 'balanced' },
-              { profileId: 'p-route', model: 'route-power', tier: 'power' },
+              { profileId: 'p-route', groupId: 'g-route', model: 'route-mini', tier: 'fast' },
+              { profileId: 'p-route', groupId: 'g-route', model: 'route-mid', tier: 'balanced' },
+              { profileId: 'p-route', groupId: 'g-route', model: 'route-power', tier: 'power' },
             ],
           },
         }),
@@ -172,6 +172,7 @@ desktop('自动模型路由：简单快速、困难强力、失败升级、连�
         body: JSON.stringify({
           cwd: repo,
           profileId: 'p-route',
+          groupId: 'g-route',
           model: 'auto',
           permissionMode: 'bypassPermissions',
           title: '自动路由回归',
@@ -303,16 +304,16 @@ desktop('分工路由：取向关闭不注入取向段、分工关闭零派发�
         const divisionSettings = {
           preference: 'balanced',
           candidates: [
-            { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
-            { profileId: 'p-route', model: 'route-mid', tier: 'balanced' },
-            { profileId: 'p-route', model: 'route-kimi', tier: 'balanced' },
-            { profileId: 'p-route', model: 'route-power', tier: 'power' },
+            { profileId: 'p-route', groupId: 'g-route', model: 'route-mini', tier: 'fast' },
+            { profileId: 'p-route', groupId: 'g-route', model: 'route-mid', tier: 'balanced' },
+            { profileId: 'p-route', groupId: 'g-route', model: 'route-kimi', tier: 'balanced' },
+            { profileId: 'p-route', groupId: 'g-route', model: 'route-power', tier: 'power' },
           ],
           division: {
-            planner: { profileId: 'p-route', model: 'route-power', tier: 'power' },
-            executor: { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
+            planner: { profileId: 'p-route', groupId: 'g-route', model: 'route-power', tier: 'power' },
+            executor: { profileId: 'p-route', groupId: 'g-route', model: 'route-mini', tier: 'fast' },
             domains: [
-              { profileId: 'p-route', model: 'route-kimi', domain: 'ui', minComplexity: 35, note: '前端强项' },
+              { profileId: 'p-route', groupId: 'g-route', model: 'route-kimi', domain: 'ui', minComplexity: 35, note: '前端强项' },
             ],
             planThreshold: 35,
             confirm: 'never',
@@ -327,6 +328,7 @@ desktop('分工路由：取向关闭不注入取向段、分工关闭零派发�
           body: JSON.stringify({
             cwd: repo,
             profileId: 'p-route',
+            groupId: 'g-route',
             model: 'route-power',
             permissionMode: 'bypassPermissions',
             title: '多代理协作回归',
@@ -697,16 +699,16 @@ fb2102('反馈1323#03：路由提示行可展开看本轮注入，未注入时�
       const divisionSettings = {
         preference: 'balanced',
         candidates: [
-          { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
-          { profileId: 'p-route', model: 'route-mid', tier: 'balanced' },
-          { profileId: 'p-route', model: 'route-kimi', tier: 'balanced' },
-          { profileId: 'p-route', model: 'route-power', tier: 'power' },
+          { profileId: 'p-route', groupId: 'g-route', model: 'route-mini', tier: 'fast' },
+          { profileId: 'p-route', groupId: 'g-route', model: 'route-mid', tier: 'balanced' },
+          { profileId: 'p-route', groupId: 'g-route', model: 'route-kimi', tier: 'balanced' },
+          { profileId: 'p-route', groupId: 'g-route', model: 'route-power', tier: 'power' },
         ],
         division: {
-          planner: { profileId: 'p-route', model: 'route-power', tier: 'power' },
-          executor: { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
+          planner: { profileId: 'p-route', groupId: 'g-route', model: 'route-power', tier: 'power' },
+          executor: { profileId: 'p-route', groupId: 'g-route', model: 'route-mini', tier: 'fast' },
           domains: [
-            { profileId: 'p-route', model: 'route-kimi', domain: 'ui', minComplexity: 35, note: '前端强项' },
+            { profileId: 'p-route', groupId: 'g-route', model: 'route-kimi', domain: 'ui', minComplexity: 35, note: '前端强项' },
           ],
           planThreshold: 35,
           confirm: 'never',
@@ -721,6 +723,7 @@ fb2102('反馈1323#03：路由提示行可展开看本轮注入，未注入时�
         body: JSON.stringify({
           cwd: repo,
           profileId: 'p-route',
+          groupId: 'g-route',
           model: 'route-power',
           permissionMode: 'bypassPermissions',
           delegation: 'more',

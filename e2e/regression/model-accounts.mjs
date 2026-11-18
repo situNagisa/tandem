@@ -690,10 +690,10 @@ desktop('账号编辑：Key 掩码不回传、拉取模型只选最新、无原�
         list: document.querySelectorAll('input[list]').length,
       }))
       assert.deepEqual(native, { select: 0, datalist: 0, list: 0 }, `仍有浏览器自带下拉：${JSON.stringify(native)}`)
-      // 单价模型输入是可输入的候选列表（ui/Combobox）。
+      // 单价模型输入是可输入的候选列表（ui/Combobox）：自定义单价在分组里设置。
       await dialog.getByRole('button', { name: /编辑 多代模型账号/ }).first().click()
       await page.waitForTimeout(300)
-      await page.getByRole('button', { name: /下一步/ }).click()
+      await page.getByRole('button', { name: /编辑分组 aws/ }).first().click()
       await page.waitForTimeout(400)
       const priceInput = page.getByRole('combobox', { name: '自定义单价模型' })
       await priceInput.focus()

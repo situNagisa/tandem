@@ -14,11 +14,11 @@ import {
   updateVendorConfig,
 } from '../src/model-prices.js';
 
-function withHome(fn: (home: string) => Promise<void> | void) {
+async function withHome(fn: (home: string) => Promise<void> | void) {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-model-prices-'));
   try {
     loadModelPrices(home);
-    return Promise.resolve(fn(home));
+    await fn(home);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

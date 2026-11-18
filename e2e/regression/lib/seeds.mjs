@@ -776,12 +776,22 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       apiKey: 'reg-key-route',
       models: ['route-mini', 'route-mid', 'route-power', 'route-kimi'],
       defaultModel: 'route-mini',
-      price: {
-        'route-mini': { input: 0.1, output: 0.2 },
-        'route-mid': { input: 1, output: 2 },
-        'route-kimi': { input: 4, output: 12 },
-        'route-power': { input: 10, output: 20 },
-      },
+      groups: [
+        {
+          id: 'g-route',
+          name: '路由分组',
+          apiKey: 'reg-key-route-group',
+          models: ['route-mini', 'route-mid', 'route-power', 'route-kimi'],
+          defaultModel: 'route-mini',
+          // 自定义单价只在分组里设置；缓存读价显式给出，用量卡不自行折算。
+          price: {
+            'route-mini': { input: 0.1, output: 0.2, cacheRead: 0.05 },
+            'route-mid': { input: 1, output: 2, cacheRead: 0.5 },
+            'route-kimi': { input: 4, output: 12, cacheRead: 2 },
+            'route-power': { input: 10, output: 20, cacheRead: 5 },
+          },
+        },
+      ],
       createdAt: Date.now() - 28_000,
     },
     {
