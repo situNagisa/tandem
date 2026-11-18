@@ -20,7 +20,7 @@ import {
 import { listModels as fetchModelList } from '../providers/index.js';
 import type { ListModelsResult } from '../providers/index.js';
 import { applyModelCapabilities } from '../providers/capabilities.js';
-import { priceForModel, priceInfoFor, resolvePriceForModel } from '../usage.js';
+import { costOfUsage, priceForModel, priceInfoFor, resolvePriceForModel } from '../usage.js';
 import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { formatUsd } from './helpers.js';
@@ -286,7 +286,7 @@ export function modelPrices(host: Host, profileId: string,
     if (resolved) {
       const group = resolved.groupMultiplier ?? 1;
       out[model] = {
-        ...priceInfoFor(resolved.price, profile.kind),
+        ...priceInfoFor(resolved.price),
         source: resolved.source,
         ...(group !== 1 && resolved.official
           ? {
@@ -382,8 +382,14 @@ export function sessionUsageBreakdown(host: Host, rec: SessionRecord): SessionUs
   for (const row of list) {
     const resolved = resolvePriceForModel(profile, row.model);
     if (!resolved) continue;
+    // 该行的 token 组合里有单价缺失的种类：金额按「未知单价」显示，不下发单价、不自行折算（MODEL-2）。
+    if (
+      costOfUsage(resolved.price, row, profile?.kind ?? 'openai-compatible') === undefined
+    ) {
+      continue;
+    }
     prices[row.model] = {
-      ...priceInfoFor(resolved.price, profile?.kind ?? 'openai-compatible'),
+      ...priceInfoFor(resolved.price),
       source: resolved.source,
       ...(resolved.official ? { officialInput: resolved.official.input, officialOutput: resolved.official.output } : {}),
       ...(resolved.groupMultiplier ? { groupMultiplier: resolved.groupMultiplier } : {}),

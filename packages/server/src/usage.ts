@@ -86,39 +86,14 @@ export function priceForModel(profile: StoredProfile | undefined, model: string)
   return resolvePriceForModel(profile, model)?.price;
 }
 
-/** 缓存读取价相对输入价的倍率（仅账号自定义单价缺缓存价时使用）。 */
-export function cacheReadMultiplier(kind: ProviderKind): number {
-  return kind === 'anthropic' ? 0.1 : 0.5;
-}
-
-/** 缓存写入价相对输入价的倍率（仅账号自定义单价缺缓存价时使用）。 */
-export function cacheWriteMultiplier(kind: ProviderKind): number {
-  return kind === 'anthropic' ? 1.25 : 0;
-}
-
-/** 取某档单价里各 token 种类的实际单价（缓存价缺省时按协议倍率折算）。 */
-function effectiveRates(price: PriceRates, kind: ProviderKind): Required<PriceRates> {
-  const write = cacheWriteMultiplier(kind);
-  const w5 = price.cacheWrite5m ?? price.input * write;
+/** 菜单展示用的每百万 token 单价：只下发明确写出的缓存价，不自行折算。 */
+export function priceInfoFor(price: Price): import('@tandem/protocol').ModelPriceInfo {
   return {
     input: price.input,
     output: price.output,
-    cacheRead: price.cacheRead ?? price.input * cacheReadMultiplier(kind),
-    cacheWrite5m: w5,
-    cacheWrite1h: price.cacheWrite1h ?? w5,
-  };
-}
-
-/** 把单价折算成菜单展示用的每百万 token 价格（含缓存命中）。 */
-export function priceInfoFor(price: Price, kind: ProviderKind): import('@tandem/protocol').ModelPriceInfo {
-  const round = (value: number) => Math.round(value * 1e6) / 1e6;
-  const rates = effectiveRates(price, kind);
-  return {
-    input: rates.input,
-    output: rates.output,
-    cacheRead: round(rates.cacheRead),
-    ...(rates.cacheWrite5m > 0 ? { cacheWrite: round(rates.cacheWrite5m) } : {}),
-    ...(price.cacheWrite1h !== undefined ? { cacheWrite1h: round(rates.cacheWrite1h) } : {}),
+    ...(price.cacheRead !== undefined ? { cacheRead: price.cacheRead } : {}),
+    ...(price.cacheWrite5m !== undefined ? { cacheWrite: price.cacheWrite5m } : {}),
+    ...(price.cacheWrite1h !== undefined ? { cacheWrite1h: price.cacheWrite1h } : {}),
   };
 }
 
@@ -132,15 +107,16 @@ export function costOf(price: Price | undefined, inputTokens: number, outputToke
 
 /**
  * 按模型单价与缓存价计算一次调用花费。
- * 优先用表里逐型号的缓存读写价；账号自定义单价没有缓存价时按协议倍率折算。
+ * 只使用单价里明确写出的 token 种类单价：某一种 token 有用量、单价却缺失时返回 undefined
+ * （按 MODEL-2 显示「单价未知」），不按协议倍率或同档其他单价折算；该种 token 用量为 0 时照常计费。
  * 上游只给缓存写总数（没有 5m/1h 拆分）时按 5 分钟价计。
  */
 export function costOfUsage(
   price: Price | undefined,
   usage: Usage,
-  kind: ProviderKind,
-): number {
-  if (!price) return 0;
+  _kind?: ProviderKind,
+): number | undefined {
+  if (!price) return undefined;
   const cacheRead = usage.cacheReadTokens ?? 0;
   const cacheWrite = usage.cacheWriteTokens ?? 0;
   const split5m = usage.cacheWrite5mTokens ?? 0;
@@ -148,18 +124,22 @@ export function costOfUsage(
   const write5m = split5m + split1h > 0 ? split5m : cacheWrite;
   const write1h = split5m + split1h > 0 ? split1h : 0;
   const promptTokens = usage.inputTokens + cacheRead + cacheWrite;
-  const rates = effectiveRates(
-    price.longPrompt && promptTokens > price.longPrompt.threshold ? price.longPrompt.rates : price,
-    kind,
-  );
-  const cost =
-    (usage.inputTokens * rates.input +
-      cacheRead * rates.cacheRead +
-      write5m * rates.cacheWrite5m +
-      write1h * rates.cacheWrite1h +
-      usage.outputTokens * rates.output) /
-    1_000_000;
-  return Math.round(cost * 1e8) / 1e8;
+  const rates =
+    price.longPrompt && promptTokens > price.longPrompt.threshold ? price.longPrompt.rates : price;
+  let cost = 0;
+  const add = (tokens: number, rate: number | undefined): boolean => {
+    if (tokens <= 0) return true;
+    if (rate === undefined) return false;
+    cost += tokens * rate;
+    return true;
+  };
+  const priced =
+    add(usage.inputTokens, rates.input) &&
+    add(cacheRead, rates.cacheRead) &&
+    add(write5m, rates.cacheWrite5m) &&
+    add(write1h, rates.cacheWrite1h) &&
+    add(usage.outputTokens, rates.output);
+  return priced ? Math.round((cost / 1_000_000) * 1e8) / 1e8 : undefined;
 }
 
 function localDay(date = new Date()): string {

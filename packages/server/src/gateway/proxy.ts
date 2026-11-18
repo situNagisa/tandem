@@ -169,7 +169,7 @@ interface CompletionMeta {
 
 function recordCompletion(meta: CompletionMeta, status: number, usage: Usage, error?: string, debugResponse?: string): void {
   const price = priceForModel(meta.profile, meta.model);
-  const costUsd = costOfUsage(price, usage, meta.profile.kind);
+  const costUsd = costOfUsage(price, usage, meta.profile.kind) ?? 0;
   if (status >= 200 && status < 300) {
     meta.host.usage.record({
       hostId: meta.host.config.hostId,

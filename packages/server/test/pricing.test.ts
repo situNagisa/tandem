@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { costOfUsage, priceForModel, priceInfoFor, resolvePriceForModel } from '../src/usage.js';
+import { costOfUsage, priceForModel, priceInfoFor, resolvePriceForModel, type Price } from '../src/usage.js';
 import { effectiveProfile } from '../src/config.js';
 import type { StoredProfile } from '../src/types.js';
 
@@ -184,15 +184,23 @@ test('Haiku 5.5 按单次请求提示 token 分段：>100K 整条按高价', () 
   assert.equal(cost({ inputTokens: 100_001, outputTokens: 1_000_000 }), 2.5500005);
 });
 
-test('账号自定义单价没有缓存价时按协议倍率折算', () => {
-  const profile = { price: { 'custom-claude': { input: 10, output: 20 } } } as unknown as StoredProfile;
-  const price = priceForModel(profile, 'custom-claude')!;
-  const cost = costOfUsage(price, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 }, 'anthropic');
-  assert.equal(cost, 1);
-  assert.equal(costOfUsage(price, { inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 }, 'anthropic'), 22.5);
-  const info = priceInfoFor(price, 'anthropic');
-  assert.equal(info.cacheRead, 1);
-  assert.equal(info.cacheWrite, 12.5);
+test('缺少某种 token 的单价时按单价未知处理，不按协议倍率折算', () => {
+  const price: Price = { input: 10, output: 20 };
+  const usage = (patch: Record<string, number>) => ({
+    inputTokens: 0,
+    outputTokens: 0,
+    ...patch,
+  });
+  // 该种 token 有用量、单价缺失：金额未知。
+  assert.equal(costOfUsage(price, usage({ cacheReadTokens: 1_000_000 }), 'anthropic'), undefined);
+  assert.equal(costOfUsage(price, usage({ cacheWriteTokens: 1_000_000 }), 'anthropic'), undefined);
+  // 该种 token 用量为 0：照常按已写出的单价计费。
+  assert.equal(costOfUsage(price, usage({ inputTokens: 1_000_000 }), 'anthropic'), 10);
+  assert.equal(costOfUsage(price, usage({ inputTokens: 1_000_000, outputTokens: 1_000_000 }), 'anthropic'), 30);
+  // 菜单单价也不补算缓存价。
+  const info = priceInfoFor(price);
+  assert.equal(info.cacheRead, undefined);
+  assert.equal(info.cacheWrite, undefined);
 });
 
 test('effectiveProfile 合并分组倍率，计费与菜单共用同一函数', () => {

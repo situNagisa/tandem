@@ -93,3 +93,51 @@ test('单价按官方表解析，金额保持记账值；返回会话账号供�
   assert.equal(breakdown.prices['mock-1'], undefined);
   assert.equal(breakdown.profileId, 'p1');
 });
+
+test('有单价但缺少某种 token 单价时，不下发单价（按未知单价显示）', () => {
+  const cachedProfile = {
+    ...profile,
+    kind: 'openai' as const,
+    models: ['gpt-4.1'],
+    defaultModel: 'gpt-4.1',
+  };
+  const cachedHost = {
+    profileFor: (id: string) => (id === 'p1' ? cachedProfile : undefined),
+  } as unknown as Host;
+  const record = rec({
+    model: 'gpt-4.1',
+    messages: [
+      message('c1', 'gpt-4.1', {
+        inputTokens: 1_000_000,
+        outputTokens: 0,
+        cacheReadTokens: 10_000,
+        costUsd: 2,
+      }),
+    ],
+    usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 2 },
+  });
+  const breakdown = sessionUsageBreakdown(cachedHost, record);
+  // gpt-4.1 官方表没有缓存读价：该行不能自行折算，按未知单价处理。
+  assert.equal(breakdown.prices['gpt-4.1'], undefined);
+  assert.equal(breakdown.rows[0]?.costUsd, 2);
+});
+
+test('有单价但该种 token 用量为 0 时照常下发单价', () => {
+  const cachedProfile = {
+    ...profile,
+    kind: 'openai' as const,
+    models: ['gpt-4.1'],
+    defaultModel: 'gpt-4.1',
+  };
+  const cachedHost = {
+    profileFor: (id: string) => (id === 'p1' ? cachedProfile : undefined),
+  } as unknown as Host;
+  const record = rec({
+    model: 'gpt-4.1',
+    messages: [message('c2', 'gpt-4.1', { inputTokens: 1_000_000, outputTokens: 0, costUsd: 2 })],
+    usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 2 },
+  });
+  const breakdown = sessionUsageBreakdown(cachedHost, record);
+  assert.equal(breakdown.prices['gpt-4.1']?.input, 2);
+  assert.equal(breakdown.prices['gpt-4.1']?.cacheRead, undefined);
+});

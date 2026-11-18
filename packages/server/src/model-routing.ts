@@ -970,6 +970,7 @@ export function recordRouteSavings(
   const price = profile ? priceForModel(profile, baseline.model) : undefined;
   if (!profile || !price) return undefined;
   const baselineCost = costOfUsage(price, usage, profile.kind);
+  if (baselineCost === undefined) return undefined;
   const saved = baselineCost - actualCost;
   const byRole = { ...(rec.routeSavings?.byRole ?? {}) };
   if (role) {

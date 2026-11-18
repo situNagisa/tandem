@@ -287,7 +287,7 @@ function recordCompactUsage(
   rec.usage.cacheWriteTokens = (rec.usage.cacheWriteTokens ?? 0) + cacheWriteTokens;
   const price = priceForModel(profile, model);
   const cost = costOfUsage(price, { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }, profile.kind);
-  if (price) rec.usage.costUsd = Math.round(((rec.usage.costUsd ?? 0) + cost) * 1e8) / 1e8;
+  if (cost !== undefined) rec.usage.costUsd = Math.round(((rec.usage.costUsd ?? 0) + cost) * 1e8) / 1e8;
   if (profile.kind !== 'demo') {
     host.usage.record({
       hostId: host.config.hostId,
@@ -295,7 +295,7 @@ function recordCompactUsage(
       model,
       inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
       outputTokens,
-      costUsd: cost,
+      costUsd: cost ?? 0,
       ...(keyId ? { keyId } : {}),
       ...(rec.groupId ? { groupId: rec.groupId } : {}),
     });

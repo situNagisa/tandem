@@ -251,7 +251,7 @@ export async function streamAccountModel(
       if (signal.aborted) return;
       if (key) updateKeySuccess(ctx.profiles, ctx.accountId, input.profileId, input.groupId, key.id);
       const price = resolvePriceForModel(effective, model);
-      const costUsd = costOfUsage(price?.price, response.usage, callProfile.kind);
+      const costUsd = costOfUsage(price?.price, response.usage, callProfile.kind) ?? 0;
       ctx.usage.record({
         at: Date.now(),
         accountId: ctx.accountId,

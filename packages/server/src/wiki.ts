@@ -911,7 +911,7 @@ export class WikiManager {
     const profile = job.profileId ? this.host.profileFor(job.profileId, job.groupId) : undefined;
     const price = priceForModel(profile, job.model ?? '');
     if (!price) return 0;
-    return costOfUsage(price, rec.usage, profile?.kind ?? 'openai-compatible');
+    return costOfUsage(price, rec.usage, profile?.kind ?? 'openai-compatible') ?? 0;
   }
 
   cancel(id: string): boolean {
