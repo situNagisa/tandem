@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'session-graph'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [59, 132, 133, 134, 135, 136, 137, 138, 139, 140, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201]
+export const order = [59, 132, 133, 133.5, 134, 135, 136, 137, 138, 139, 140, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201]
 
 export function register(checks, ctx) {
   const {
