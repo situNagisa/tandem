@@ -44,7 +44,60 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'model-accounts'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [21, 22, 23, 34, 35, 36, 37, 80, 81, 82, 83, 91, 114, 115, 220]
+export const order = [21, 22, 23, 34, 35, 36, 37, 80, 81, 82, 83, 91, 114, 115, 220, 221, 222, 223, 224, 225, 226]
+
+/** 打开设置里的「模型价格」页：导航分组可折叠，先全部展开，再按页面名点开。 */
+async function openModelPrices(page) {
+  const dialog = page.getByRole('dialog', { name: '设置' })
+  if (!(await dialog.isVisible().catch(() => false))) {
+    await page.locator('aside').getByRole('button', { name: '设置', exact: true }).click()
+  }
+  await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+  const nav = dialog.getByRole('navigation', { name: '设置页签' })
+  const collapsed = nav.locator('[data-settings-group] > button[aria-expanded="false"]')
+  for (let index = 0; index < 10 && (await collapsed.count()) > 0; index += 1) {
+    await collapsed.first().click()
+  }
+  const direct = nav.getByRole('button', { name: '模型价格', exact: true }).first()
+  if (await direct.count()) {
+    await direct.click()
+  } else {
+    // 实现也可能把它放在「账号与模型」页的子页签里。
+    await nav.getByRole('button', { name: '账号与模型', exact: true }).first().click()
+    await dialog.getByRole('button', { name: '模型价格', exact: true }).first().click()
+  }
+  await page.waitForTimeout(250)
+  return dialog
+}
+
+/** 找到包含某段文字的模型行，返回整行文字（向上找同时含金额与「输入/输出」的容器）。 */
+async function modelRowText(scope, pattern) {
+  const label = scope.getByText(pattern).first()
+  if ((await label.count()) === 0) return ''
+  return label.evaluate((el) => {
+    let node = el
+    for (let depth = 0; depth < 5 && node.parentElement; depth += 1) {
+      node = node.parentElement
+      const text = node.innerText ?? ''
+      if (/\$|未知单价/.test(text) && /输入|输出/.test(text)) return text
+    }
+    return node.innerText ?? ''
+  })
+}
+
+/** 用量明细里按模型拆行：模型名（data-tip 是原始模型 id）到下一次出现金额/次数的容器。 */
+async function usageRows(card) {
+  return card.evaluate((root) =>
+    [...root.querySelectorAll('[data-tip]')].map((el) => {
+      let node = el
+      while (node && node !== root && !/\d+\s*次/.test(node.innerText ?? '')) node = node.parentElement
+      return {
+        model: el.getAttribute('data-tip') ?? '',
+        text: (node?.innerText ?? '').trim(),
+      }
+    }),
+  )
+}
 
 export function register(checks, ctx) {
   const {
@@ -738,5 +791,345 @@ fb2102('反馈1323#02：分组只显示一个 Key，无拖动/故障切换/轮�
       assert.equal(await card.locator('[data-key-masked]').count(), 1, '删除后仍只显示一个 Key')
       assert.match((await card.locator('[data-key-masked]').first().innerText()).trim(), /^reg-\*{4}/, '删除后没有显示剩下的旧 Key')
       await closeSettings(page)
+    })
+
+desktop('[MODEL-5] 设置「模型价格」按厂商列出官方单价、来源链接与更新时间', async (page) => {
+      const dialog = await openModelPrices(page)
+      const content = dialog.locator('[data-settings-page-content]').first()
+      await content.waitFor({ state: 'visible', timeout: 10_000 })
+      const text = await content.innerText()
+      for (const vendor of ['Anthropic', 'OpenAI', 'DeepSeek']) {
+        assert.ok(text.includes(vendor), `「模型价格」没有按厂商分组列出 ${vendor}：${text.slice(0, 400)}`)
+      }
+      for (const header of ['输入', '输出', '缓存写', '缓存读']) {
+        assert.ok(text.includes(header), `「模型价格」没有列出「${header}」单价列：${text.slice(0, 400)}`)
+      }
+
+      // 已收录模型至少能看到四种官方单价（Opus 5.5：$4 / $20 / 缓存写 $5 / 缓存读 $0.2）。
+      const opusRow = await modelRowText(content, /claude-opus-5-5|Opus 5\.5/)
+      assert.ok(opusRow, '「模型价格」里没有 Opus 5.5 这一行')
+      assert.doesNotMatch(opusRow, /Sonnet|Haiku/, `定位到的不是单个模型行：${opusRow}`)
+      assert.match(opusRow, /\$4(?:\.0+)?(?![\d.])/, `Opus 5.5 输入单价不对：${opusRow}`)
+      assert.match(opusRow, /\$20(?:\.0+)?(?![\d.])/, `Opus 5.5 输出单价不对：${opusRow}`)
+      assert.match(opusRow, /\$5(?:\.0+)?(?![\d.])/, `Opus 5.5 缓存写单价不对：${opusRow}`)
+      assert.match(opusRow, /\$0\.2(?:0*)(?![\d])/, `Opus 5.5 缓存读单价不对：${opusRow}`)
+
+      // 来源链接与更新时间必须看得见、可核对。
+      const links = await content.locator('a[href]').evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute('href') ?? ''),
+      )
+      assert.ok(
+        links.some((href) => /anthropic\.com|platform\.claude/.test(href)),
+        `「模型价格」没有厂商官方来源链接：${JSON.stringify(links.slice(0, 10))}`,
+      )
+      assert.match(text, /\d{4}[-/年]\s*\d{1,2}[-/月]\s*\d{1,2}/, '「模型价格」没有显示更新时间')
+      await closeSettings(page)
+    })
+
+desktop('[MODEL-6] 定价页地址与解析规则可编辑；刷新先预览差异、确认后写入；失败保留旧价', async (page) => {
+      // 解析规则的最小约定：JSON 对象里的 `models` 数组，每项 { id, input, output, cacheWrite, cacheRead }。
+      // 规则值写 `models`；定价页返回同样的 JSON。刷新用的服务都在回环随机端口，不访问公网。
+      const good = http.createServer((req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(
+          JSON.stringify({
+            source: `http://127.0.0.1:${req.socket.localPort}/pricing`,
+            updatedAt: '2026-11-18T00:00:00.000Z',
+            models: [
+              { id: 'claude-opus-5-5', input: 4.37, output: 21.9, cacheWrite: 5.43, cacheRead: 0.237 },
+              { id: 'claude-haiku-test', input: 1.07, output: 2.13, cacheWrite: 0.57, cacheRead: 0.11 },
+            ],
+          }),
+        )
+      })
+      const bad = http.createServer((req, res) => {
+        res.writeHead(500, { 'content-type': 'text/plain' })
+        res.end('pricing unavailable')
+      })
+      const goodPort = await listen(good)
+      const badPort = await listen(bad)
+      try {
+        const dialog = await openModelPrices(page)
+        const content = dialog.locator('[data-settings-page-content]').first()
+        await content.waitFor({ state: 'visible', timeout: 10_000 })
+
+        const vendorSection = async () => {
+          const section = content
+            .locator('[data-price-vendor], section, details, tr')
+            .filter({ hasText: 'Anthropic' })
+            .first()
+          return (await section.count()) ? section : content
+        }
+        const openVendorEditor = async () => {
+          const section = await vendorSection()
+          const edit = section
+            .getByRole('button', { name: /配置|编辑|获取方式|定价页|来源/ })
+            .first()
+          if (await edit.count()) await edit.click()
+          else await section.getByText('Anthropic', { exact: true }).first().click()
+          await page.waitForTimeout(200)
+          return section
+        }
+        const field = (section, label, fallback) =>
+          section.getByLabel(label).or(section.locator(fallback)).first()
+        const setSource = async (url) => {
+          const section = await openVendorEditor()
+          const urlInput = field(
+            section,
+            /定价页地址|价格页地址|来源地址/,
+            'input[placeholder*="定价页"], input[placeholder*="地址"], input[placeholder*="URL"]',
+          )
+          await urlInput.waitFor({ timeout: 10_000 })
+          await urlInput.fill(url)
+          const rule = field(section, /解析规则|解析方式/, 'textarea[placeholder*="解析"], input[placeholder*="解析"]')
+          await rule.waitFor({ timeout: 10_000 })
+          await rule.fill('models')
+          const save = section.getByRole('button', { name: /保存|应用/ }).first()
+          if (await save.count()) await save.click()
+          await page.waitForTimeout(300)
+        }
+
+        // 改定价页地址与解析规则，刷新后先看到差异预览，确认前表格不变。
+        await setSource(`http://127.0.0.1:${goodPort}/pricing`)
+        let section = await vendorSection()
+        const refreshButton = async (scope) => {
+          const scoped = scope.getByRole('button', { name: /刷新/ }).first()
+          return (await scoped.count()) ? scoped : content.getByRole('button', { name: /刷新/ }).first()
+        }
+        await (await refreshButton(section)).click()
+
+        const preview = page
+          .locator('[role="dialog"]:not([aria-label="设置"])')
+          .filter({ hasText: /差异|预览|变更|待确认/ })
+          .last()
+        await preview.waitFor({ state: 'visible', timeout: 10_000 })
+        const previewText = await preview.innerText()
+        assert.match(previewText, /claude-haiku-test|claude-opus-5-5/, `差异预览没有列出变更模型：${previewText}`)
+        assert.match(previewText, /4\.37|21\.9|0\.237/, `差异预览没有列出新单价：${previewText}`)
+        assert.doesNotMatch(
+          await content.innerText(),
+          /claude-haiku-test/,
+          '差异预览阶段已经把新价格写进表格',
+        )
+        const confirm = preview.getByRole('button', { name: /确认|写入|应用/ }).first()
+        assert.ok(await confirm.count(), '差异预览没有确认按钮')
+        await confirm.click()
+        await preview.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {})
+        await page.waitForTimeout(400)
+        let tableText = await content.innerText()
+        assert.match(tableText, /claude-haiku-test/, '确认后表格没有写入新模型')
+        assert.match(tableText, /4\.37/, '确认后表格没有写入新单价')
+
+        // 模拟刷新失败：如实显示原因，旧价格保留。
+        await setSource(`http://127.0.0.1:${badPort}/pricing`)
+        const errorPattern = /刷新失败|请求失败|无法|不可达|超时|500/
+        assert.equal(
+          await dialog.getByText(errorPattern).count(),
+          0,
+          '刷新失败前页面已经显示错误提示',
+        )
+        section = await vendorSection()
+        await (await refreshButton(section)).click()
+        await dialog.getByText(errorPattern).first().waitFor({ timeout: 10_000 })
+        const failureText = await content.innerText()
+        assert.match(failureText, errorPattern, '刷新失败没有显示原因')
+        tableText = await content.innerText()
+        assert.match(tableText, /4\.37/, '刷新失败后旧价格被清掉')
+        assert.match(tableText, /claude-haiku-test/, '刷新失败后旧模型行被清掉')
+        await closeSettings(page)
+      } finally {
+        good.close()
+        bad.close()
+      }
+    })
+
+desktop('[MODEL-6] HTML 表格定价页：按表格选择器与列映射解析，刷新预览后写入', async (page) => {
+      // 解析规则约定（HTML 定价页）：JSON
+      // { "type":"html-table", "table":"table#pricing",
+      //   "columns":{"model":0,"input":1,"output":2,"cacheWrite":3,"cacheRead":4} }
+      // 表格列：模型名 | 输入 | 输出 | 缓存写 | 缓存读；单价单元格写成 "$x / MTok"。
+      // 定价页由回环随机端口提供，不访问公网。
+      const html = `<!doctype html><html><body>
+        <h1>Pricing</h1>
+        <table id="pricing">
+          <thead><tr><th>模型</th><th>输入</th><th>输出</th><th>缓存写</th><th>缓存读</th></tr></thead>
+          <tbody>
+            <tr><td>claude-opus-5-5</td><td>$4.63 / MTok</td><td>$23.7 / MTok</td><td>$5.79 / MTok</td><td>$0.463 / MTok</td></tr>
+            <tr><td>claude-html-model</td><td>$1.13 / MTok</td><td>$6.7 / MTok</td><td>$1.41 / MTok</td><td>$0.113 / MTok</td></tr>
+          </tbody>
+        </table>
+      </body></html>`
+      const server = http.createServer((req, res) => {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(html)
+      })
+      const port = await listen(server)
+      try {
+        const dialog = await openModelPrices(page)
+        const content = dialog.locator('[data-settings-page-content]').first()
+        await content.waitFor({ state: 'visible', timeout: 10_000 })
+        const vendor = 'OpenAI'
+        const sectionFor = async () => {
+          const section = content
+            .locator('[data-price-vendor], section, details, tr')
+            .filter({ hasText: vendor })
+            .first()
+          return (await section.count()) ? section : content
+        }
+        const openEditor = async () => {
+          const section = await sectionFor()
+          const edit = section
+            .getByRole('button', { name: /配置|编辑|获取方式|定价页|来源/ })
+            .first()
+          if (await edit.count()) await edit.click()
+          else await section.getByText(vendor, { exact: true }).first().click()
+          await page.waitForTimeout(200)
+          return section
+        }
+        const field = (section, label, fallback) =>
+          section.getByLabel(label).or(section.locator(fallback)).first()
+
+        let section = await openEditor()
+        const urlInput = field(
+          section,
+          /定价页地址|价格页地址|来源地址/,
+          'input[placeholder*="定价页"], input[placeholder*="地址"], input[placeholder*="URL"]',
+        )
+        await urlInput.waitFor({ timeout: 10_000 })
+        await urlInput.fill(`http://127.0.0.1:${port}/pricing`)
+        const rule = field(
+          section,
+          /解析规则|解析方式/,
+          'textarea[placeholder*="解析"], input[placeholder*="解析"]',
+        )
+        await rule.waitFor({ timeout: 10_000 })
+        await rule.fill(
+          JSON.stringify({
+            type: 'html-table',
+            table: 'table#pricing',
+            columns: { model: 0, input: 1, output: 2, cacheWrite: 3, cacheRead: 4 },
+          }),
+        )
+        const save = section.getByRole('button', { name: /保存|应用/ }).first()
+        if (await save.count()) await save.click()
+        await page.waitForTimeout(300)
+
+        section = await sectionFor()
+        const refresh = section.getByRole('button', { name: /刷新/ }).first()
+        await ((await refresh.count()) ? refresh : content.getByRole('button', { name: /刷新/ }).first()).click()
+
+        const preview = page
+          .locator('[role="dialog"]:not([aria-label="设置"])')
+          .filter({ hasText: /差异|预览|变更|待确认/ })
+          .last()
+        await preview.waitFor({ state: 'visible', timeout: 10_000 })
+        const previewText = await preview.innerText()
+        assert.match(previewText, /claude-html-model/, `HTML 定价页没有解析出新模型：${previewText}`)
+        assert.match(previewText, /4\.63|23\.7|0\.463/, `HTML 定价页没有解析出表格中的单价：${previewText}`)
+        assert.doesNotMatch(
+          await content.innerText(),
+          /claude-html-model/,
+          '差异预览阶段已经把 HTML 表格的新价格写进表格',
+        )
+        const confirm = preview.getByRole('button', { name: /确认|写入|应用/ }).first()
+        assert.ok(await confirm.count(), 'HTML 刷新预览没有确认按钮')
+        await confirm.click()
+        await preview.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {})
+        await page.waitForTimeout(400)
+        const tableText = await content.innerText()
+        assert.match(tableText, /claude-html-model/, '确认后表格没有写入 HTML 定价页的新模型')
+        assert.match(tableText, /4\.63/, '确认后表格没有写入 HTML 表格的单价')
+        await closeSettings(page)
+      } finally {
+        server.close()
+      }
+    })
+
+desktop('[MODEL-2] 未收录单价的模型显示「未知单价」与去设置入口，不显示 $0', async (page) => {
+      await openSession(page, 'price-rows')
+      const total = page.locator('[data-usage-total]').first()
+      await total.waitFor()
+      await total.hover()
+      const card = page.locator('[data-usage-breakdown]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const text = await card.innerText()
+      assert.match(text, /未知单价/, `未收录单价的模型没有显示「未知单价」：${text}`)
+      assert.doesNotMatch(text, /\$0\.00/, `未收录单价的模型显示了 $0：${text}`)
+
+      const row = (await usageRows(card)).find((item) => item.model === 'future-model-x')
+      assert.ok(row, '用量明细没有 future-model-x 行')
+      assert.match(row.text, /未知单价/, `未知单价行显示不对：${row.text}`)
+      assert.doesNotMatch(row.text, /\$0(?:\.00)?(?!\d)/, `未知单价行出现 $0：${row.text}`)
+      assert.ok(text.includes('去设置'), '未知单价没有给出去设置单价的入口')
+
+      const usage = await api(base, token, '/api/sessions/price-rows/usage')
+      assert.equal(usage.prices['future-model-x'], undefined, '服务端给未收录模型下发了单价')
+      assert.equal(usage.prices['claude-opus-5-5']?.input, 4, '已收录模型没有下发官方单价')
+
+      await card.getByRole('button', { name: '去设置' }).first().click()
+      const dialog = page.getByRole('dialog', { name: '设置' })
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      const profiles = dialog.locator('[data-settings-page-content="profiles"]')
+      if ((await profiles.count()) === 0) {
+        await dialog.getByText('自定义单价').first().waitFor({ timeout: 10_000 })
+      } else {
+        await profiles.getByText('自定义单价').first().waitFor({ timeout: 10_000 })
+      }
+      await closeSettings(page)
+    })
+
+desktop('[MODEL-8] 用量明细每个模型一行金额，次要行只有调用次数与 token', async (page) => {
+      await openSession(page, 'price-rows')
+      const total = page.locator('[data-usage-total]').first()
+      await total.waitFor()
+      await total.hover()
+      const card = page.locator('[data-usage-breakdown]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const rows = await usageRows(card)
+      assert.equal(rows.length, 3, `用量明细应每个模型一行：${JSON.stringify(rows)}`)
+      for (const row of rows) {
+        const lines = row.text
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+        const amountLines = lines.filter((line) => line.includes('$') || line.includes('未知单价'))
+        assert.equal(amountLines.length, 1, `${row.model} 应只有一行金额：${row.text}`)
+        const amount = amountLines[0]
+        assert.doesNotMatch(
+          amount.replace(/Opus 5\.5|Sonnet 5\.5|Future Model X/g, ''),
+          /次|输入|输出|缓存/,
+          `${row.model} 的金额行混入了次要信息：${row.text}`,
+        )
+        const detail = lines.filter((line) => /\d+\s*次/.test(line))
+        assert.equal(detail.length, 1, `${row.model} 应有一行次数与 token：${row.text}`)
+        assert.doesNotMatch(detail[0], /\$/, `${row.model} 的次要行出现金额：${detail[0]}`)
+        assert.match(detail[0], /输入|输出/, `${row.model} 的次要行没有 token：${detail[0]}`)
+      }
+      const text = await card.innerText()
+      assert.doesNotMatch(text, /\$\s*\d+(?:\.\d+)?\s*\/\s*M/, `用量明细出现单价数字：${text}`)
+      assert.doesNotMatch(text, /倍率/, `没有分组倍率时不应出现倍率说明：${text}`)
+    })
+
+desktop('[MODEL-8] 用了分组倍率时注明倍率，不展示乘出来的单价', async (page) => {
+      await openSession(page, 'mult-price')
+      const total = page.locator('[data-usage-total]').first()
+      await total.waitFor()
+      await total.hover()
+      const card = page.locator('[data-usage-breakdown]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const text = await card.innerText()
+      assert.match(text, /分组倍率\s*0\.5(?!\d)/, `用量明细没有注明分组倍率：${text}`)
+      // 金额是记账时的值；这里不重算，只核对与接口返回的记账金额一致。
+      const usage = await api(base, token, '/api/sessions/mult-price/usage')
+      const recorded = usage.rows.find((row) => row.model === 'claude-opus-5-5')
+      assert.ok(recorded, `用量明细接口没有 Opus 5.5 行：${JSON.stringify(usage.rows)}`)
+      assert.match(
+        text,
+        new RegExp(`\\$${recorded.costUsd.toFixed(2)}`),
+        `用量明细金额不是记账值：${text}`,
+      )
+      assert.doesNotMatch(text, /\$\s*\d+(?:\.\d+)?\s*\/\s*M/, `用量明细出现单价数字：${text}`)
+      assert.doesNotMatch(text, /\$\s*2(?:\.0+)?\s*\/\s*M/, `用量明细展示了乘出来的单价：${text}`)
+      await page.screenshot({ path: path.join(shots, 'model-8-multiplier.png') })
     })
 }
