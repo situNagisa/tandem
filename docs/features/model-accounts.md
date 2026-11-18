@@ -38,7 +38,7 @@
 
 ## 下拉与候选列表（反馈10#06 / R37、R01）
 
-- 所有下拉都走 `ui/MenuSelect`（设置里的 `Controls.Select` 也是它的包装）；可输入 + 候选的模型 ID 输入走 `ui/Combobox`（单价覆盖、预算按模型）。
+- 所有下拉都走 `ui/MenuSelect`（设置里的 `Controls.Select` 也是它的包装）；可输入 + 候选的模型 ID 输入走 `ui/Combobox`（分组自定义单价、预算按模型）。
 - `scripts/ui-audit.mjs` 新增 `native-datalist`、`native-input-list`，与既有的 `native-select` 一样在 `ui/` 以外直接失败，不设白名单例外。
 
 ## 额度交接与预算阻止（反馈0220#02 / R72）
