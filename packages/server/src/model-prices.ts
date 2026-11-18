@@ -943,10 +943,18 @@ function diffVendor(vendor: ModelPriceVendor, next: ModelPriceEntry[]): ModelPri
       continue;
     }
     const fields = PRICE_FIELDS.filter((key) => prev[key] !== entry[key]).map(String);
-    const longChanged = JSON.stringify(prev.longPrompt ?? null) !== JSON.stringify(entry.longPrompt ?? null);
+    const longChanged = stableJson(prev.longPrompt ?? null) !== stableJson(entry.longPrompt ?? null);
     if (fields.length || longChanged) {
       changes.push({ model, status: 'changed', before: prev, after: entry, fields: longChanged ? [...fields, 'longPrompt'] : fields });
     }
   }
   return changes;
+}
+
+/** 与键顺序无关的 JSON（比较分段价时，解析顺序不同不算调价）。 */
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  const obj = value as Record<string, unknown>;
+  return `{${Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`).join(',')}}`;
 }
