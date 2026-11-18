@@ -493,7 +493,9 @@ async function main() {
           check.order = module.order[index]
         })
       } else {
-        console.warn(`regression: ${module.feature} 的 order 与用例数不一致（${module.order?.length} / ${added.length}）`)
+        // 不一致时整份文件失去序号会被排到最前，前序状态错位导致别的用例失败（1920 批次的 5 条误报）。直接退出。
+        console.error(`regression: ${module.feature} 的 order 与用例数不一致（${module.order?.length} / ${added.length}）：新增用例必须在 order 里补序号`)
+        process.exit(2)
       }
     }
 
