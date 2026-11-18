@@ -2,7 +2,8 @@
 //
 // 官方单价存放在工作站数据目录的 model-prices.json（首启用下面这份内置表初始化），
 // 计价只读这份表；设置里「模型价格」按厂商配置定价页地址与解析规则，一键刷新后先预览差异再写入。
-// 只收官方定价页上逐型号列出的价格，不在型号之间借价；模型名按前缀匹配（最长命中）。
+// 只收官方定价页上逐型号列出的价格，不在型号之间借价：型号名须完全相同，或只差日期后缀
+// （`-YYYYMMDD` / `@YYYYMMDD`）与 `-latest`（同一型号的不同写法）。
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
@@ -378,28 +379,33 @@ export function normalizeModel(model: string): string {
   return slash >= 0 ? lower.slice(slash + 1) : lower;
 }
 
-/** 官方价：按前缀匹配（最长命中），版本点号写法归一后也能命中。 */
-export function officialPriceFor(model: string): { vendor: string; price: Price } | undefined {
+/** 同一型号的允许写法：原名、去掉日期后缀（-YYYYMMDD / @YYYYMMDD）、去掉 -latest。 */
+export function modelNameVariants(model: string): string[] {
   const name = normalizeModel(model);
-  if (!name) return undefined;
-  const exact = matchPrefix(name);
-  const dashed = name.includes('.') ? matchPrefix(name.replace(/\./g, '-')) : undefined;
-  const best = dashed && (!exact || dashed.entry.model.length > exact.entry.model.length) ? dashed : exact;
-  if (!best) return undefined;
-  return { vendor: best.vendor.id, price: toPrice(best.entry) };
+  if (!name) return [];
+  const out = [name];
+  const noDate = name.replace(/[-@]\d{8}$/, '');
+  if (noDate !== name) out.push(noDate);
+  const noLatest = name.replace(/-latest$/, '');
+  if (noLatest !== name) out.push(noLatest);
+  return [...new Set(out)];
 }
 
-function matchPrefix(name: string): { vendor: ModelPriceVendor; entry: ModelPriceEntry } | undefined {
-  let best: { vendor: ModelPriceVendor; entry: ModelPriceEntry } | undefined;
-  for (const vendor of current.vendors) {
-    for (const entry of vendor.models) {
-      const index = name.indexOf(entry.model);
-      if (index < 0) continue;
-      if (index > 0 && /[a-z0-9]/.test(name[index - 1]!)) continue;
-      if (!best || entry.model.length > best.entry.model.length) best = { vendor, entry };
-    }
+/** 官方价：只认完全相同的型号名，或同一型号加日期 / `-latest` 后缀；不按前缀借价。 */
+export function officialPriceFor(model: string): { vendor: string; price: Price } | undefined {
+  for (const name of modelNameVariants(model)) {
+    const hit = findEntry(name);
+    if (hit) return { vendor: hit.vendor.id, price: toPrice(hit.entry) };
   }
-  return best;
+  return undefined;
+}
+
+function findEntry(name: string): { vendor: ModelPriceVendor; entry: ModelPriceEntry } | undefined {
+  for (const vendor of current.vendors) {
+    const entry = vendor.models.find((item) => item.model === name);
+    if (entry) return { vendor, entry };
+  }
+  return undefined;
 }
 
 /** 表里的条目转成计价用的单价（含分段价）。 */

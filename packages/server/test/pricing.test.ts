@@ -10,16 +10,25 @@ function io(model: string) {
   return price ? { input: price.input, output: price.output } : undefined;
 }
 
-test('内置表：常见模型按前缀命中，版本后缀与供应商前缀不影响', () => {
+test('内置表：常用型号精确命中，日期 / latest 后缀视为同一型号', () => {
   assert.deepEqual(io('gpt-4o'), { input: 2.5, output: 10 });
-  assert.deepEqual(io('gpt-4o-2024-08-06'), { input: 2.5, output: 10 });
   assert.deepEqual(io('gpt-4-turbo'), { input: 10, output: 30 });
   assert.deepEqual(io('gpt-4'), { input: 30, output: 60 });
-  assert.deepEqual(io('gpt-3.5-turbo-0125'), { input: 0.5, output: 1.5 });
   assert.deepEqual(io('openai/gpt-5-mini'), { input: 0.25, output: 2 });
-  assert.deepEqual(io('us.anthropic.claude-sonnet-4-5-20250929-v1:0'), { input: 3, output: 15 });
   assert.deepEqual(io('claude-3-sonnet-20240229'), { input: 3, output: 15 });
+  assert.deepEqual(io('claude-3-5-sonnet-20241022'), { input: 3, output: 15 });
+  assert.deepEqual(io('claude-opus-4-5@20251101'), { input: 5, output: 25 });
+  assert.deepEqual(io('claude-opus-4-5-latest'), { input: 5, output: 25 });
   assert.deepEqual(io('o3-pro'), { input: 20, output: 80 });
+});
+
+test('不在型号之间借价：前缀、点号、非日期版本号与云端命名空间都不命中', () => {
+  assert.equal(priceForModel(undefined, 'gpt-4.5'), undefined);
+  assert.equal(priceForModel(undefined, 'claude-opus-5-6'), undefined);
+  assert.equal(priceForModel(undefined, 'gpt-4o-2024-08-06'), undefined);
+  assert.equal(priceForModel(undefined, 'gpt-3.5-turbo-0125'), undefined);
+  assert.equal(priceForModel(undefined, 'claude-opus-5.5'), undefined);
+  assert.equal(priceForModel(undefined, 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'), undefined);
 });
 
 test('未收录的型号返回 undefined，不猜价格', () => {
@@ -62,8 +71,7 @@ test('Claude 逐型号官方价：Opus 5.5 / Sonnet 5.5 / Haiku 5.5 含缓存读
   assert.deepEqual(io('claude-opus-4-1'), { input: 15, output: 75 });
   assert.deepEqual(io('claude-fable-5-2'), { input: 8, output: 40 });
   assert.deepEqual(io('claude-mythos-5-1'), { input: 10, output: 50 });
-  // 点号写法与连字符等价
-  assert.deepEqual(io('claude-opus-5.5'), { input: 4, output: 20 });
+  // 官方页逐型号列出的点号写法（如 claude-3.5-sonnet）按精确名命中。
   assert.deepEqual(io('claude-3.5-sonnet-20241022'), { input: 3, output: 15 });
 });
 
@@ -138,7 +146,7 @@ test('无官方价的模型在倍率下仍返回 undefined', () => {
   assert.equal(priceForModel(profile, 'mock-1'), undefined);
 });
 
-test('补充的常见模型按前缀命中官方价', () => {
+test('补充的常见模型按精确型号命中官方价', () => {
   assert.deepEqual(io('claude-opus-4-5-20251101'), { input: 5, output: 25 });
   assert.deepEqual(io('gpt-5.1-codex'), { input: 1.25, output: 10 });
   assert.deepEqual(io('gpt-6-luna'), { input: 0.1, output: 0.5 });
