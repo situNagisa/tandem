@@ -674,7 +674,7 @@ desktop('设置分组：6 组、合并页与高级折叠', async (page) => {
       const advanced = nav.locator('[data-settings-group="advanced"] > button').first()
       assert.equal(await advanced.getAttribute('aria-expanded'), 'false', '高级组默认没有折叠')
       assert.equal(await nav.locator('[data-settings-page="evals"]').count(), 0, '高级组折叠时仍渲染评测页')
-      assert.equal(await nav.locator('[data-settings-page]').count(), 15, '设置导航可见页面数不是 15')
+      assert.equal(await nav.locator('[data-settings-page]').count(), 16, '设置导航可见页面数不是 16')
       await advanced.click()
       await page.waitForTimeout(150)
       assert.equal(await advanced.getAttribute('aria-expanded'), 'true', '高级组无法展开')
