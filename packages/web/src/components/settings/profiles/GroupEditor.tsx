@@ -338,7 +338,9 @@ export function GroupEditor({
         </SettingRow>
       </div>
 
-      <PriceOverrides models={selected} price={price} onChange={setPrice} />
+      <div data-setting-id="profiles.prices">
+        <PriceOverrides models={selected} price={price} onChange={setPrice} />
+      </div>
 
       <div className="mt-2">
         <SettingRow label="备用分组（额度将尽时按顺序交接）" stacked wide>

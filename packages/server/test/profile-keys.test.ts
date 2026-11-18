@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { ProfileGroupInput, ProfileInput } from '@tandem/protocol';
@@ -31,6 +31,34 @@ test('掩码识别：回传的掩码与空值都视为未修改', () => {
   assert.equal(looksMaskedKey('••••abcd'), true);
   assert.equal(looksMaskedKey('sk-real-key'), false);
   assert.equal(looksMaskedKey(''), false);
+});
+
+test('账号级自定义单价不再保存：旧数据读到丢弃，更新时忽略', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tandem-account-price-'));
+  writeFileSync(
+    path.join(dir, 'profiles.json'),
+    JSON.stringify({
+      profiles: [
+        {
+          id: 'p-old',
+          name: '旧账号',
+          kind: 'openai-compatible',
+          apiKey: 'sk-old',
+          models: ['m1'],
+          defaultModel: 'm1',
+          createdAt: 1,
+          price: { m1: { input: 1, output: 2 } },
+        },
+      ],
+    }),
+  );
+  const s = new ProfileStore(dir);
+  assert.equal(s.get('p-old')?.price, undefined, '旧账号级单价应被丢弃');
+  const updated = s.update('p-old', {
+    ...baseInput(),
+    price: { m1: { input: 3, output: 4 } },
+  } as ProfileInput);
+  assert.equal(updated?.price, undefined, '更新接口不应再写入账号级单价');
 });
 
 test('分组倍率保存后重新加载仍在，计价按官方价 × 分组倍率（账号倍率丢弃）', () => {

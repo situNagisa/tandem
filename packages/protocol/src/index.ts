@@ -56,8 +56,6 @@ export interface Profile {
   apiKeyMasked: string;    // 只回传掩码，明文 key 永不下发给客户端
   models: string[];        // 该账号可选模型（无分组时使用）
   defaultModel: string;
-  /** 自定义单价（账号级兜底，分组里的同名单价优先）；设置后不再乘分组倍率。 */
-  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>; // 手动覆盖模型能力（思考强度/上下文）
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   /** 余额查询配置；缺省 auto（只识别已知平台）。 */
@@ -160,7 +158,6 @@ export interface ProfileInput {
   apiKey?: string;         // 更新时不传表示不改
   models: string[];
   defaultModel: string;
-  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: ProfileGroupInput[]; // 传入即整体替换；带 id 且不带 apiKey 表示保留原 key
 }
@@ -459,10 +456,11 @@ export interface SessionUsageBreakdown {
   /** 计入会话总量但不在任何消息上的部分（压缩、AI 评审、更早的分页消息等）。 */
   residual: SessionUsageRow;
   total: Usage;
-  /** 当前生效单价（每百万 token，已乘账号/分组倍率），按会话当前账号/分组解析。 */
+  /** 当前生效单价（每百万 token，已乘分组倍率），按会话当前账号/分组解析。 */
   prices: Record<string, ModelPriceInfo>;
-  /** 会话所属账号：有未收录官方价的型号时，用量卡据此跳到该账号的单价覆盖。 */
+  /** 会话所属账号与分组：有未收录官方价的型号时，用量卡据此跳到该分组的自定义单价编辑处。 */
   profileId?: string;
+  groupId?: string;
 }
 
 // ---------- 配额预估与会话交接 ----------
@@ -667,8 +665,8 @@ export interface ModelPriceInfo {
   cacheWrite?: number;
   /** 缓存写（1 小时 TTL），仅官方表逐型号收录时下发。 */
   cacheWrite1h?: number;
-  /** 价格来源：账号自定义单价，或内置官方价（菜单显示「参考价」）。 */
-  source?: 'account' | 'builtin';
+  /** 价格来源：分组自定义单价，或内置官方价（菜单显示「参考价」）。 */
+  source?: 'custom' | 'builtin';
   /** 官方价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 说明。 */
   officialInput?: number;
   officialOutput?: number;

@@ -48,13 +48,13 @@ test('模型名 → 思考档位 / Claude 思考协议 / 单价（单价只认�
   }
 });
 
-test('单价优先级：账号自定义 > 内置官方价；未收录不借价', () => {
+test('单价优先级：分组自定义 > 内置官方价；未收录不借价', () => {
   const profile = {
     price: { 'claude-opus-5-5': { input: 2, output: 10 } },
   } as unknown as StoredProfile;
   assert.deepEqual(resolvePriceForModel(profile, 'claude-opus-5-5'), {
     price: { input: 2, output: 10 },
-    source: 'account',
+    source: 'custom',
   });
   const sonnet = resolvePriceForModel(profile, 'claude-sonnet-5-5');
   assert.equal(sonnet?.source, 'builtin');

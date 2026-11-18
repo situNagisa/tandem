@@ -75,19 +75,19 @@ test('Claude 逐型号官方价：Opus 5.5 / Sonnet 5.5 / Haiku 5.5 含缓存读
   assert.deepEqual(io('claude-3.5-sonnet-20241022'), { input: 3, output: 15 });
 });
 
-test('单价来源：账号覆盖标 account，内置表标 builtin', () => {
+test('单价来源：分组自定义单价标 custom，内置表标 builtin', () => {
   const profile = {
     price: { 'gpt-4o': { input: 9, output: 18 } },
   } as unknown as StoredProfile;
   assert.deepEqual(resolvePriceForModel(profile, 'gpt-4o'), {
     price: { input: 9, output: 18 },
-    source: 'account',
+    source: 'custom',
   });
   assert.equal(resolvePriceForModel(profile, 'o3')?.source, 'builtin');
   assert.equal(resolvePriceForModel(profile, 'mystery-model-1'), undefined);
 });
 
-test('账号单价覆盖：精确匹配 → 前缀匹配 → 内置表', () => {
+test('分组自定义单价：同名或日期/latest 后缀命中，不按前缀借价', () => {
   const profile = {
     price: {
       'gpt-4o': { input: 9, output: 18 },
@@ -95,8 +95,9 @@ test('账号单价覆盖：精确匹配 → 前缀匹配 → 内置表', () => {
     },
   } as unknown as StoredProfile;
   assert.deepEqual(priceForModel(profile, 'gpt-4o'), { input: 9, output: 18 });
-  assert.deepEqual(priceForModel(profile, 'gpt-4o-2024-08-06'), { input: 9, output: 18 });
+  assert.deepEqual(priceForModel(profile, 'gpt-4o-20240806'), { input: 9, output: 18 });
   assert.deepEqual(priceForModel(profile, 'openai/gpt-4o-mini'), { input: 1, output: 2 });
+  assert.equal(priceForModel(profile, 'gpt-4o-2024-08-06'), undefined);
   assert.deepEqual(io('claude-sonnet-4-5'), { input: 3, output: 15 });
   assert.deepEqual(priceForModel(profile, 'claude-sonnet-4-5'), {
     input: 3,
@@ -126,7 +127,7 @@ test('倍率只属于分组：实际价格 = 官方价 × 分组倍率（含缓�
   assert.deepEqual(priceForModel(profile, 'gpt-5-mini'), { input: 0.2, output: 1.6 });
 });
 
-test('按模型覆盖单价优先，覆盖后不再乘倍率', () => {
+test('分组自定义单价优先，覆盖后不再乘倍率', () => {
   const profile = {
     multiplier: 0.3,
     groupMultiplier: 0.5,
@@ -134,7 +135,7 @@ test('按模型覆盖单价优先，覆盖后不再乘倍率', () => {
   } as unknown as StoredProfile;
   assert.deepEqual(resolvePriceForModel(profile, 'gpt-4o'), {
     price: { input: 9, output: 18 },
-    source: 'account',
+    source: 'custom',
   });
   // 官方价只乘分组倍率：o3 $2/$8 × 0.5。
   assert.deepEqual(priceForModel(profile, 'o3'), { input: 1, output: 4 });

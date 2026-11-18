@@ -50,7 +50,6 @@ import { SegmentedControl } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Tip, Tooltip } from '../ui/Tooltip'
 import { ProviderIcon } from '../ProviderIcon'
-import { PriceOverrides } from './profiles/PriceOverrides'
 import { GroupEditor } from './profiles/GroupEditor'
 import { KeysPanel } from './profiles/KeysPanel'
 import { Card } from '../ui/Card'
@@ -59,7 +58,6 @@ import {
   GROUP_KIND_LABELS,
   type FormState,
   type GroupDraft,
-  type PriceMap,
   type Step,
   defaultGroupDraft,
   emptyForm,
@@ -129,7 +127,6 @@ export function ProfilesSection() {
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
   const [groups, setGroups] = useState<GroupDraft[]>([])
   const [groupEditor, setGroupEditor] = useState<{ index: number | 'new' } | null>(null)
-  const [price, setPrice] = useState<PriceMap>({})
   const lastAutoFetch = useRef('')
   const fetchInFlight = useRef(false)
 
@@ -175,7 +172,6 @@ export function ProfilesSection() {
     setShowAdvanced(false)
     setGroups([])
     setGroupEditor(null)
-    setPrice({})
     lastAutoFetch.current = ''
   }
 
@@ -207,7 +203,6 @@ export function ProfilesSection() {
     setSelected(p.models)
     setDefaultModel(p.defaultModel || p.models[0] || '')
     setShowAdvanced(!!p.baseUrl && p.baseUrl !== brand?.baseUrl)
-    setPrice(p.price ? { ...p.price } : {})
     setGroups(
       p.groups?.length
         ? p.groups.map((g) => ({
@@ -240,18 +235,21 @@ export function ProfilesSection() {
     )
   }
 
-  // 模型菜单的「单价未设置 · 去设置」：直接打开该账号并定位到单价区。
+  // 模型菜单/用量卡的「单价未设置 · 去设置」：打开账号并展开该模型所在分组的自定义单价。
   const priceFocus = useRef(0)
   const priceFocusTimer = useRef(0)
   useEffect(() => {
     const id = settingsFocus?.id
     if (!id?.startsWith('profiles.prices:')) return
     if (priceFocus.current === settingsFocus!.nonce) return
-    const profile = profiles.find((p) => p.id === id.slice('profiles.prices:'.length))
+    const [profileId, groupId] = id.slice('profiles.prices:'.length).split(':')
+    const profile = profiles.find((p) => p.id === profileId)
     if (!profile) return
     priceFocus.current = settingsFocus!.nonce
     startEdit(profile)
-    setStep(3)
+    const index = groupId ? profile.groups?.findIndex((g) => g.id === groupId) : 0
+    setStep(2)
+    setGroupEditor({ index: typeof index === 'number' && index >= 0 ? index : 0 })
     window.clearTimeout(priceFocusTimer.current)
     priceFocusTimer.current = window.setTimeout(() => {
       const node = document.querySelector<HTMLElement>('[data-setting-id="profiles.prices"]')
@@ -296,7 +294,6 @@ export function ProfilesSection() {
       ),
     ])
     setGroupEditor(null)
-    setPrice({})
   }
 
   const applyFetched = (list: ModelInfo[], keepProfileModels: boolean) => {
@@ -443,7 +440,6 @@ export function ProfilesSection() {
       apiKey: form.apiKey.trim() || undefined,
       models,
       defaultModel: def,
-      ...(Object.keys(price).length ? { price } : {}),
       ...(form.balancePlatform !== 'auto' ||
       form.balanceUrl.trim() ||
       form.balancePath.trim() ||
@@ -923,14 +919,6 @@ export function ProfilesSection() {
                     </button>
                   </div>
                 ))}
-              </div>
-
-              <div data-setting-id="profiles.prices">
-              <PriceOverrides
-                models={[...new Set(groups.flatMap((g) => g.models))]}
-                price={price}
-                onChange={setPrice}
-              />
               </div>
 
               {error && (

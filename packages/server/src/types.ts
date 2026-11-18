@@ -75,7 +75,7 @@ export interface StoredProfile {
   defaultModel: string;
   /** effectiveProfile 合并分组后的分组倍率（仅服务端运行时使用，不落盘）。 */
   groupMultiplier?: number;
-  /** 自定义单价（账号级兜底，分组里的同名覆盖优先；按模型名精确或前缀匹配）；设置后不再乘倍率。 */
+  /** 分组自定义单价经 effectiveProfile 填入的运行时值（不落盘，账号级不再保存）。 */
   price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: StoredProfileGroup[];

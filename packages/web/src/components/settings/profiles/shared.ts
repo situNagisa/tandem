@@ -164,7 +164,6 @@ export function profileInputOf(profile: Profile, groups: ProfileGroupInput[]): P
     ...(profile.baseUrl ? { baseUrl: profile.baseUrl } : {}),
     models: profile.models,
     defaultModel: profile.defaultModel,
-    ...(profile.price ? { price: profile.price } : {}),
     ...(profile.modelCapabilities ? { modelCapabilities: profile.modelCapabilities } : {}),
     groups,
   }

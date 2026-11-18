@@ -1,23 +1,23 @@
 // 用量统计：每轮模型调用后按 day/host/profile/model 累加到 ~/.tandem/usage.json。
-// 单价只有两个来源：分组/账号自定义单价，或价格表里的官方价（唯一实现在 model-prices.ts）；
+// 单价只有两个来源：分组自定义单价，或价格表里的官方价（唯一实现在 model-prices.ts）；
 // 未收录的型号视为未知单价。倍率只属于分组。
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ProviderKind, Usage, UsageStatsRow } from '@tandem/protocol';
 import type { StoredProfile } from './types.js';
-import { normalizeModel, officialPriceFor, type Price, type PriceRates } from './model-prices.js';
+import { modelNameVariants, normalizeModel, officialPriceFor, type Price, type PriceRates } from './model-prices.js';
 
 export type { Price, PriceRates };
 
 /**
- * 取模型单价：自定义 price 精确匹配 → 前缀匹配 → 官方价格表。
+ * 取模型单价：分组自定义单价（同名或日期/latest 后缀）→ 官方价格表。
  * 返回 undefined 表示未收录官方价，仍统计 token，花费显示为「未知单价」。
  */
 export interface ResolvedPrice {
   /** 实际生效单价（官方价已乘分组倍率；自定义单价原样使用）。 */
   price: Price;
-  /** 自定义单价（account）或价格表官方价（builtin）。 */
-  source: 'account' | 'builtin';
+  /** 分组自定义单价（custom）或价格表官方价（builtin）。 */
+  source: 'custom' | 'builtin';
   /** 官方价（未乘倍率），仅在分组倍率不为 1 时返回，供界面展示说明。 */
   official?: PriceRates;
   /** 实际生效的分组倍率；为 1 时不返回。 */
@@ -26,27 +26,22 @@ export interface ResolvedPrice {
 
 /**
  * 取模型的实际单价：
- * - 自定义 `price` 覆盖（分组优先于账号，精确/前缀匹配）优先，覆盖后不再乘倍率；
+ * - 分组自定义 `price` 优先，覆盖后不再乘倍率；
  * - 否则官方价格表 × 分组倍率（缺省 1）；倍率只属于分组（MODEL-3）。
  */
 export function resolvePriceForModel(
   profile: StoredProfile | undefined,
   model: string,
 ): ResolvedPrice | undefined {
-  const name = normalizeModel(model);
-  if (!name) return undefined;
+  const variants = modelNameVariants(model);
+  if (!variants.length) return undefined;
   const overrides = profile?.price ?? {};
-  const keys = Object.keys(overrides).filter((key) => {
-    const k = normalizeModel(key);
-    return k === name || name.startsWith(k);
-  });
-  // 前缀越长越优先
-  keys.sort((a, b) => b.length - a.length);
-  if (keys[0]) return { price: { ...overrides[keys[0]]! }, source: 'account' };
+  const customKey = Object.keys(overrides).find((key) =>
+    variants.includes(normalizeModel(key)),
+  );
+  if (customKey) return { price: { ...overrides[customKey]! }, source: 'custom' };
 
-  // 前缀匹配同时兼容供应商前缀与版本后缀：`us.anthropic.claude-sonnet-4-5-20250929-v1:0`
-  // 也能命中 `claude-sonnet-4-5`；取最长的前缀，避免 `gpt-4` 抢走 `gpt-4o`。
-  const builtin = officialPriceFor(name);
+  const builtin = officialPriceFor(model);
   if (!builtin) return undefined;
   const groupMultiplier = multiplierOf(profile?.groupMultiplier);
   if (groupMultiplier === 1) return { price: { ...builtin.price }, source: 'builtin' };

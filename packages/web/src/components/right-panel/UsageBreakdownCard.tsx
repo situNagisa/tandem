@@ -27,7 +27,7 @@ function tokenLine(row: SessionUsageRow): string {
 /**
  * 用量卡悬停明细（反馈1724#06，反馈1920#03 精简）：每个模型一行金额，次要行写次数与 token，
  * 用了分组倍率时注明。金额是记账时的值（历史不重算）。未收录官方价的型号显示「未知单价」，
- * 并复用模型菜单的入口跳到该账号的单价覆盖。
+ * 并复用模型菜单的入口跳到该模型所在分组的自定义单价编辑处。
  */
 export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sessionId: string }) {
   const focusSetting = useUiStore((s) => s.focusSetting)
@@ -101,7 +101,12 @@ export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sess
                   <button
                     type="button"
                     data-raw-button
-                    onClick={() => focusSetting('profiles', `profiles.prices:${data.profileId}`)}
+                    onClick={() =>
+                      focusSetting(
+                        'profiles',
+                        `profiles.prices:${data.profileId}${data.groupId ? `:${data.groupId}` : ''}`,
+                      )
+                    }
                     className="text-text-secondary underline decoration-border underline-offset-2 hover:text-text"
                   >
                     去设置

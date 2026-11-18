@@ -389,5 +389,12 @@ export function sessionUsageBreakdown(host: Host, rec: SessionRecord): SessionUs
       ...(resolved.groupMultiplier ? { groupMultiplier: resolved.groupMultiplier } : {}),
     };
   }
-  return { rows: list, residual, total: { ...rec.usage }, prices, ...(rec.profileId ? { profileId: rec.profileId } : {}) };
+  return {
+    rows: list,
+    residual,
+    total: { ...rec.usage },
+    prices,
+    ...(rec.profileId ? { profileId: rec.profileId } : {}),
+    ...(rec.groupId ? { groupId: rec.groupId } : {}),
+  };
 }

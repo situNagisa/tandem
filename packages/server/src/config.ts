@@ -190,13 +190,12 @@ export class ProfileStore {
         };
         // MODEL-3：倍率只属于分组；旧数据里的账号级倍率直接丢弃（内测不迁移）。
         delete (profile as { multiplier?: number }).multiplier;
+        // MODEL-1：自定义单价只在分组里设置；旧账号级单价直接丢弃（内测不迁移）。
+        delete profile.price;
         // 老数据没有 groups，按无分组账号处理；分组里的单 apiKey 迁移为 keys[0]
         const groups = normalizeStoredGroups(p.groups);
         if (groups.length) profile.groups = groups;
         else delete profile.groups;
-        const price = normalizePrice(p.price);
-        if (price) profile.price = price;
-        else delete profile.price;
         const caps = normalizeModelCapabilities(p.modelCapabilities);
         if (caps) profile.modelCapabilities = caps;
         else delete profile.modelCapabilities;
@@ -226,8 +225,6 @@ export class ProfileStore {
       defaultModel: input.defaultModel || normalizeModels(input.models)[0] || '',
       createdAt: now,
     };
-    const price = normalizePrice((input as { price?: unknown }).price);
-    if (price) profile.price = price;
     const caps = normalizeModelCapabilities(input.modelCapabilities);
     if (caps) profile.modelCapabilities = caps;
     const groups = buildGroups(input.groups, [], String(input.apiKey ?? ''));
@@ -257,13 +254,7 @@ export class ProfileStore {
       if (input.balanceQuery) next.balanceQuery = { ...input.balanceQuery };
       else delete next.balanceQuery;
     }
-    // price 是自定义单价：更新时允许作为扩展字段传入，null 表示清除
-    const rawPrice = (input as { price?: unknown }).price;
-    if (rawPrice !== undefined) {
-      const price = normalizePrice(rawPrice);
-      if (price) next.price = price;
-      else delete next.price;
-    }
+    // price 只在分组里设置；账号级单价不再读写（MODEL-1）。
     if (input.modelCapabilities !== undefined) {
       const caps = normalizeModelCapabilities(input.modelCapabilities);
       if (caps) next.modelCapabilities = caps;
@@ -314,7 +305,6 @@ export class ProfileStore {
       apiKeyMasked: profile.apiKeyMasked ?? maskApiKey(profile.apiKey),
       models: [...profile.models],
       defaultModel: profile.defaultModel,
-      ...(profile.price ? { price: { ...profile.price } } : {}),
       ...(profile.modelCapabilities
         ? { modelCapabilities: structuredClone(profile.modelCapabilities) }
         : {}),
@@ -376,7 +366,6 @@ export class ProfileStore {
         ...(item.balance ? { balance: { ...item.balance } } : {}),
         models: normalizeModels(item.models),
         defaultModel: item.defaultModel || normalizeModels(item.models)[0] || '',
-        ...(item.price ? { price: normalizePrice(item.price)! } : {}),
         ...(item.modelCapabilities ? { modelCapabilities: normalizeModelCapabilities(item.modelCapabilities)! } : {}),
         ...(item.groups?.length
           ? {
@@ -477,7 +466,7 @@ function normalizeModels(models: unknown): string[] {
   return [...new Set(models.map((m) => String(m).trim()).filter(Boolean))];
 }
 
-/** 账号单价覆盖：{ 模型名: { input, output } }，每百万 token 美元。 */
+/** 分组自定义单价：{ 模型名: { input, output } }，每百万 token 美元。 */
 /** 价格倍率：0 以上有限数；缺省/非法返回 undefined。 */
 export function normalizeMultiplier(value: unknown): number | undefined {
   if (value === undefined || value === null || value === '') return undefined;
@@ -872,10 +861,8 @@ export function effectiveProfile(profile: StoredProfile, groupId?: string): Stor
     models: group.models.length ? [...group.models] : [...profile.models],
     defaultModel: group.defaultModel || group.models[0] || profile.defaultModel,
     ...(group.multiplier !== undefined ? { groupMultiplier: group.multiplier } : {}),
-    // 自定义单价：分组里的同名覆盖账号级（MODEL-1），计价时原样使用、不乘倍率。
-    ...(profile.price || group.price
-      ? { price: { ...profile.price, ...group.price } }
-      : {}),
+    // 自定义单价只在分组里设置（MODEL-1），计价时原样使用、不乘倍率。
+    ...(group.price ? { price: { ...group.price } } : {}),
     ...(profile.modelCapabilities || group.modelCapabilities
       ? {
           modelCapabilities: {

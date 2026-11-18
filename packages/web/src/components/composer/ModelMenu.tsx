@@ -81,8 +81,8 @@ interface ModelPanelProps {
   onEffortChange: (effort: ReasoningEffort) => void
   onLongContextChange: (longContext: boolean) => void
   onManage: () => void
-  /** 未收录官方价：跳到该账号的单价覆盖设置。 */
-  onSetupPrice: (model: string) => void
+  /** 未收录官方价：跳到该模型所在分组的自定义单价设置。 */
+  onSetupPrice: (model: string, groupId?: string) => void
 }
 
 /**
@@ -212,7 +212,7 @@ function useModelPanel({
           : isCurrent(pick) && pricesLoading
             ? `${pick.model} · 单价读取中…`
             : isCurrent(pick)
-              ? `${pick.model} · 该型号尚未收录官方价，可在账号里设置单价`
+              ? `${pick.model} · 该型号尚未收录官方价，可在分组里设置单价`
               : `${pick.model} · ${profile?.name ?? ''}${groupLabel ? ` › ${groupLabel}` : ''}`
         return (
           <Menu.Item
@@ -232,7 +232,7 @@ function useModelPanel({
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    onSetupPrice(pick.model)
+                    onSetupPrice(pick.model, pick.groupId)
                   }}
                   className="pointer-events-none rounded px-0.5 text-[12px] text-muted opacity-0 outline-none transition-opacity duration-[120ms] hover:text-text group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                 >

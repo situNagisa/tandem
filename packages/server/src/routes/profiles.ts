@@ -28,9 +28,6 @@ export function parseProfileInput(body: unknown): ProfileInput {
     models,
     defaultModel,
     groups: parseGroupInputs(raw.groups),
-    ...(raw.price && typeof raw.price === 'object'
-      ? { price: raw.price as NonNullable<ProfileInput['price']> }
-      : {}),
     ...(raw.modelCapabilities && typeof raw.modelCapabilities === 'object'
       ? { modelCapabilities: raw.modelCapabilities as NonNullable<ProfileInput['modelCapabilities']> }
       : {}),

@@ -70,7 +70,7 @@ interface ComposerFooterProps {
   onChangeEffort: (effort: ReasoningEffort) => void
   onChangeLongContext: (longContext: boolean) => void
   onManageModels: () => void
-  onSetupPrice: () => void
+  onSetupPrice: (model: string, groupId?: string) => void
   onOpenModelMenu: () => void
 }
 

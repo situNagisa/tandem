@@ -65,7 +65,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'profiles.groups', tab: 'profiles', title: '账号分组', keywords: ['分组', '渠道', '协议'] },
   { id: 'profiles.models', tab: 'profiles', title: '模型列表', keywords: ['模型', '默认模型'] },
   { id: 'profiles.group-key', tab: 'profiles', title: '分组 Key', keywords: ['Key', '分组', '替换', '删除', '冷却'] },
-  { id: 'profiles.prices', tab: 'profiles', title: '模型价格覆盖', keywords: ['价格', '计费', '费用'] },
+  { id: 'profiles.prices', tab: 'profiles', title: '分组自定义单价', keywords: ['价格', '计费', '费用'] },
   { id: 'prices.vendors', tab: 'prices', title: '官方价格表', keywords: ['价格', '单价', '厂商', '官方', '计价'] },
   { id: 'prices.refresh', tab: 'prices', title: '刷新官方价', keywords: ['刷新', '定价页', '解析规则', '抓取'] },
 

@@ -488,10 +488,15 @@ export function Composer({
           onChangeEffort={changeEffort}
           onChangeLongContext={changeLongContext}
           onManageModels={() => openSettings('profiles')}
-          onSetupPrice={() => {
+          onSetupPrice={(model, groupId) => {
             setModelMenuOpen(false)
-            if (currentProfileId) focusSetting('profiles', `profiles.prices:${currentProfileId}`)
-            else openSettings('profiles')
+            const targetGroup = groupId ?? currentGroupId
+            if (currentProfileId) {
+              focusSetting(
+                'profiles',
+                `profiles.prices:${currentProfileId}${targetGroup ? `:${targetGroup}` : ''}`,
+              )
+            } else openSettings('profiles')
           }}
           onOpenModelMenu={() => {
             if (effectiveHostId && uiProfiles.length === 0 && !profilesLoading) {
