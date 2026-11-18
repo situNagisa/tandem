@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'model-accounts'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [21, 22, 23, 34, 35, 36, 37, 80, 81, 82, 83, 91, 114, 115, 220, 221, 222, 223, 224, 225]
+export const order = [21, 22, 23, 34, 35, 36, 37, 80, 81, 82, 83, 91, 114, 115, 220, 221, 222, 223, 224, 225, 226]
 
 /** 打开设置里的「模型价格」页：导航分组可折叠，先全部展开，再按页面名点开。 */
 async function openModelPrices(page) {
@@ -940,6 +940,108 @@ desktop('[MODEL-6] 定价页地址与解析规则可编辑；刷新先预览差�
       } finally {
         good.close()
         bad.close()
+      }
+    })
+
+desktop('[MODEL-6] HTML 表格定价页：按表格选择器与列映射解析，刷新预览后写入', async (page) => {
+      // 解析规则约定（HTML 定价页）：JSON
+      // { "type":"html-table", "table":"table#pricing",
+      //   "columns":{"model":0,"input":1,"output":2,"cacheWrite":3,"cacheRead":4} }
+      // 表格列：模型名 | 输入 | 输出 | 缓存写 | 缓存读；单价单元格写成 "$x / MTok"。
+      // 定价页由回环随机端口提供，不访问公网。
+      const html = `<!doctype html><html><body>
+        <h1>Pricing</h1>
+        <table id="pricing">
+          <thead><tr><th>模型</th><th>输入</th><th>输出</th><th>缓存写</th><th>缓存读</th></tr></thead>
+          <tbody>
+            <tr><td>claude-opus-5-5</td><td>$4.63 / MTok</td><td>$23.7 / MTok</td><td>$5.79 / MTok</td><td>$0.463 / MTok</td></tr>
+            <tr><td>claude-html-model</td><td>$1.13 / MTok</td><td>$6.7 / MTok</td><td>$1.41 / MTok</td><td>$0.113 / MTok</td></tr>
+          </tbody>
+        </table>
+      </body></html>`
+      const server = http.createServer((req, res) => {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(html)
+      })
+      const port = await listen(server)
+      try {
+        const dialog = await openModelPrices(page)
+        const content = dialog.locator('[data-settings-page-content]').first()
+        await content.waitFor({ state: 'visible', timeout: 10_000 })
+        const vendor = 'OpenAI'
+        const sectionFor = async () => {
+          const section = content
+            .locator('[data-price-vendor], section, details, tr')
+            .filter({ hasText: vendor })
+            .first()
+          return (await section.count()) ? section : content
+        }
+        const openEditor = async () => {
+          const section = await sectionFor()
+          const edit = section
+            .getByRole('button', { name: /配置|编辑|获取方式|定价页|来源/ })
+            .first()
+          if (await edit.count()) await edit.click()
+          else await section.getByText(vendor, { exact: true }).first().click()
+          await page.waitForTimeout(200)
+          return section
+        }
+        const field = (section, label, fallback) =>
+          section.getByLabel(label).or(section.locator(fallback)).first()
+
+        let section = await openEditor()
+        const urlInput = field(
+          section,
+          /定价页地址|价格页地址|来源地址/,
+          'input[placeholder*="定价页"], input[placeholder*="地址"], input[placeholder*="URL"]',
+        )
+        await urlInput.waitFor({ timeout: 10_000 })
+        await urlInput.fill(`http://127.0.0.1:${port}/pricing`)
+        const rule = field(
+          section,
+          /解析规则|解析方式/,
+          'textarea[placeholder*="解析"], input[placeholder*="解析"]',
+        )
+        await rule.waitFor({ timeout: 10_000 })
+        await rule.fill(
+          JSON.stringify({
+            type: 'html-table',
+            table: 'table#pricing',
+            columns: { model: 0, input: 1, output: 2, cacheWrite: 3, cacheRead: 4 },
+          }),
+        )
+        const save = section.getByRole('button', { name: /保存|应用/ }).first()
+        if (await save.count()) await save.click()
+        await page.waitForTimeout(300)
+
+        section = await sectionFor()
+        const refresh = section.getByRole('button', { name: /刷新/ }).first()
+        await ((await refresh.count()) ? refresh : content.getByRole('button', { name: /刷新/ }).first()).click()
+
+        const preview = page
+          .locator('[role="dialog"]:not([aria-label="设置"])')
+          .filter({ hasText: /差异|预览|变更|待确认/ })
+          .last()
+        await preview.waitFor({ state: 'visible', timeout: 10_000 })
+        const previewText = await preview.innerText()
+        assert.match(previewText, /claude-html-model/, `HTML 定价页没有解析出新模型：${previewText}`)
+        assert.match(previewText, /4\.63|23\.7|0\.463/, `HTML 定价页没有解析出表格中的单价：${previewText}`)
+        assert.doesNotMatch(
+          await content.innerText(),
+          /claude-html-model/,
+          '差异预览阶段已经把 HTML 表格的新价格写进表格',
+        )
+        const confirm = preview.getByRole('button', { name: /确认|写入|应用/ }).first()
+        assert.ok(await confirm.count(), 'HTML 刷新预览没有确认按钮')
+        await confirm.click()
+        await preview.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {})
+        await page.waitForTimeout(400)
+        const tableText = await content.innerText()
+        assert.match(tableText, /claude-html-model/, '确认后表格没有写入 HTML 定价页的新模型')
+        assert.match(tableText, /4\.63/, '确认后表格没有写入 HTML 表格的单价')
+        await closeSettings(page)
+      } finally {
+        server.close()
       }
     })
 
