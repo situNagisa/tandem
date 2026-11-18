@@ -19,3 +19,5 @@
 - **MODEL-8** 用量明细里每个模型一行金额，次要信息只有调用次数与 token；用了分组倍率时注明倍率。
 
 自由：页面布局、厂商排序、解析规则的配置形式、刷新提示的文案。
+
+验收测试：packages/server/test/model-pricing.acceptance.test.ts、[MODEL-2]、[MODEL-5]、[MODEL-6]、[MODEL-8]
