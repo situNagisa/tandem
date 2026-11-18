@@ -1688,7 +1688,12 @@ desktop('反馈16#10：等首个 token / 工具运行时显示 spinner 与已运
       const elapsed = page.locator('[data-tool-elapsed]').first()
       await elapsed.waitFor({ state: 'visible', timeout: 15_000 })
       assert.match(await elapsed.innerText(), /已运行 \d+s/, '工具运行中没有显示已运行时长')
-      const toolRow = page.locator('.tool-row').filter({ hasText: '运行' }).first()
+      // 同一会话可能已有前几次运行的已完成工具行：只取带「已运行」的当前运行行。
+      const toolRow = page
+        .locator('.tool-row')
+        .filter({ hasText: '运行' })
+        .filter({ has: page.locator('[data-tool-elapsed]') })
+        .first()
       assert.ok(
         await toolRow.locator('svg.lucide-loader-circle, svg.lucide-loader-2').count(),
         '工具运行中没有转圈动画',
