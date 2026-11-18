@@ -460,7 +460,6 @@ desktop('模型菜单与用量卡：Opus 5.5 显示官方价 $4/$20，不再出�
       await card.waitFor({ state: 'visible', timeout: 10_000 })
       const cardText = await card.innerText()
       assert.match(cardText, /\$4\.00(?!\d)/, `用量卡金额不是按 $4 记账：${cardText}`)
-      assert.match(cardText, /内置官方价/, `用量卡没有标出官方价来源：${cardText}`)
       assert.equal(cardText.includes('估算'), false, `用量卡仍有估算字样：${cardText}`)
     })
 
@@ -542,7 +541,7 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
         assert.match(text, /缓存读 \$0\.03/, `模型菜单没有显示最终缓存价：${text}`)
         await page.keyboard.press('Escape')
 
-        // 发一条消息：用量明细要写出「官方价 × 账号倍率 × 分组倍率 = 实际单价」，记账金额乘倍率。
+        // 发一条消息：用量明细要注明「分组倍率」，记账金额乘倍率。
         const box = page.locator('[aria-label="消息输入框"]').first()
         await box.fill('倍率回归：发一条消息')
         await box.press('Enter')
@@ -553,16 +552,7 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
         const card = page.locator('[data-usage-breakdown]').first()
         await card.waitFor({ state: 'visible', timeout: 10_000 })
         const cardText = await card.innerText()
-        assert.match(
-          cardText,
-          /官方价 输入 \$0\.15 × 账号 0\.5 × 分组 0\.8 = \$0\.06/,
-          `用量明细没有显示输入倍率：${cardText}`,
-        )
-        assert.match(
-          cardText,
-          /输出 \$0\.6 × 账号 0\.5 × 分组 0\.8 = \$0\.24/,
-          `用量明细没有显示输出倍率：${cardText}`,
-        )
+        assert.match(cardText, /分组倍率 0\.8(?!\d)/, `用量明细没有显示倍率：${cardText}`)
         const usage = await api(base, token, `/api/sessions/${session.id}/usage`)
         const usageRow = usage.rows.find((item) => item.model === 'gpt-4o-mini')
         assert.ok(usageRow, `用量明细里没有 gpt-4o-mini：${JSON.stringify(usage.rows)}`)

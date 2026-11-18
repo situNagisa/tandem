@@ -10,22 +10,11 @@ import { Spinner } from '../ui/Spinner'
 const priceNumber = (value: number | undefined) =>
   value === undefined ? '—' : String(Number(value.toFixed(4)))
 
-function priceSource(price: ModelPriceInfo | undefined): string {
-  if (!price) return '该型号尚未收录官方价'
-  if (price.source === 'account') return '账号自定义单价'
-  return price.officialInput !== undefined ? '内置官方价 × 账号/分组倍率' : '内置官方价'
-}
-
-/** 官方价 × 账号倍率 × 分组倍率 = 实际单价；倍率为 1 时不写。 */
-function multiplierLine(price: ModelPriceInfo): string | undefined {
+/** 分组倍率；为 1 或未收录官方价时返回 undefined。金额已含倍率，这里只注明。 */
+function groupMultiplierOf(price: ModelPriceInfo): number | undefined {
   if (price.officialInput === undefined) return undefined
-  const account = price.accountMultiplier ?? 1
-  const group = price.groupMultiplier ?? 1
-  const factors =
-    (account !== 1 ? ` × 账号 ${account}` : '') + (group !== 1 ? ` × 分组 ${group}` : '')
-  const input = `输入 $${priceNumber(price.officialInput)}${factors} = $${priceNumber(price.input)}`
-  const output = `输出 $${priceNumber(price.officialOutput ?? 0)}${factors} = $${priceNumber(price.output)}`
-  return `官方价 ${input} · ${output} / 百万`
+  const factor = price.groupMultiplier ?? 1
+  return factor === 1 ? undefined : factor
 }
 
 function tokenLine(row: SessionUsageRow): string {
@@ -36,8 +25,8 @@ function tokenLine(row: SessionUsageRow): string {
 }
 
 /**
- * 用量卡悬停明细（反馈1724#06）：各模型的 token × 单价 = 小计，单价来源写清楚。
- * 金额是记账时的值（历史不重算）；当前单价只用于解释计算式。未收录官方价的型号显示「未知单价」，
+ * 用量卡悬停明细（反馈1724#06，反馈1920#03 精简）：每个模型一行金额，次要行写次数与 token，
+ * 用了分组倍率时注明。金额是记账时的值（历史不重算）。未收录官方价的型号显示「未知单价」，
  * 并复用模型菜单的入口跳到该账号的单价覆盖。
  */
 export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sessionId: string }) {
@@ -88,7 +77,7 @@ export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sess
       </div>
       {data.rows.map((row) => {
         const price = data.prices[row.model]
-        const multiplied = price ? multiplierLine(price) : undefined
+        const multiplier = price ? groupMultiplierOf(price) : undefined
         return (
           <div key={row.model} className="border-t border-border/60 py-1.5 first:border-t-0">
             <div className="flex min-w-0 items-baseline justify-between gap-2">
@@ -102,30 +91,22 @@ export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sess
             <div className="mt-0.5 text-[12px] leading-4 text-muted">
               {row.calls} 次 · {tokenLine(row)}
             </div>
-            {price ? (
-              <div className="text-[12px] leading-4 text-muted">
-                单价 输入 ${priceNumber(price.input)} · 输出 ${priceNumber(price.output)} / 百万
-                {price.cacheRead !== undefined ? ` · 缓存读 $${priceNumber(price.cacheRead)}` : ''}
-                {price.cacheWrite !== undefined ? ` · 缓存写 $${priceNumber(price.cacheWrite)}` : ''}
-              </div>
+            {multiplier !== undefined ? (
+              <div className="text-[12px] leading-4 text-muted">分组倍率 {priceNumber(multiplier)}</div>
             ) : null}
-            {multiplied ? <div className="text-[12px] leading-4 text-muted">{multiplied}</div> : null}
-            <div className="flex items-baseline gap-1.5 text-[12px] leading-4 text-text-tertiary">
-              <span>{priceSource(price)}</span>
-              {!price && data.profileId ? (
-                <button
-                  type="button"
-                  data-raw-button
-                  onClick={() => focusSetting('profiles', `profiles.prices:${data.profileId}`)}
-                  className="text-text-secondary underline decoration-border underline-offset-2 hover:text-text"
-                >
-                  去设置
-                </button>
-              ) : null}
-            </div>
             {!price ? (
-              <div className="text-[12px] leading-4 text-text-tertiary">
-                可在账号里设置单价后按自定义价记账
+              <div className="flex items-baseline gap-1.5 text-[12px] leading-4 text-text-tertiary">
+                <span>该型号尚未收录官方价</span>
+                {data.profileId ? (
+                  <button
+                    type="button"
+                    data-raw-button
+                    onClick={() => focusSetting('profiles', `profiles.prices:${data.profileId}`)}
+                    className="text-text-secondary underline decoration-border underline-offset-2 hover:text-text"
+                  >
+                    去设置
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>
