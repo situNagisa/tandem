@@ -38,6 +38,7 @@ export class LocalHost {
       hostId: this.hostId,
       selfUrl,
       modelBridge: this.modelBridge,
+      workstationHome: this.workstationHome,
     });
     return this.contextValue;
   }

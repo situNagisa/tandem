@@ -7,6 +7,7 @@ import type {
   ProfileKey,
   ProfileKeyInput,
   ProviderKind,
+  UnitPrice,
 } from '@tandem/protocol'
 import { formatElapsed } from '../../../lib/format'
 
@@ -26,7 +27,7 @@ export const GROUP_KIND_LABELS: Record<ProviderKind, string> = {
 
 export type Step = 1 | 2 | 3
 
-export type PriceMap = Record<string, { input: number; output: number }>
+export type PriceMap = Record<string, UnitPrice>
 
 export interface FormState {
   name: string
@@ -66,8 +67,10 @@ export interface GroupDraft {
   baseUrl: string
   models: string[]
   defaultModel: string
-  /** 价格倍率：官方价 × 账号倍率 × 分组倍率；缺省 1。 */
+  /** 价格倍率：官方价 × 分组倍率；缺省 1。 */
   multiplier?: number
+  /** 分组里按模型设置的自定义单价（优先于官方价，不乘倍率）。 */
+  price?: PriceMap
   /** 该分组新会话的上下文默认：true=1M，false=200K，缺省跟随模型能力。 */
   longContext?: boolean
   /** 备用分组链（同一账号，按顺序）。 */
@@ -138,6 +141,7 @@ export function groupInputOf(group: ProfileGroup): ProfileGroupInput {
     models: group.models,
     defaultModel: group.defaultModel,
     ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
+    ...(group.price ? { price: group.price } : {}),
     ...(typeof group.longContext === 'boolean' ? { longContext: group.longContext } : {}),
     ...(group.modelCapabilities ? { modelCapabilities: group.modelCapabilities } : {}),
     ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: group.fallbackGroupIds } : {}),

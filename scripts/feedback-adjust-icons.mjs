@@ -38,6 +38,7 @@ const KEYWORDS = {
   'arrow-up': '上 向上',
   'arrow-up-right': '打开 外链 新窗口',
   'arrow-up-wide-narrow': '排序 方向 最新在下',
+  'badge-dollar-sign': '价格 单价 计费 费用',
   'chart-column': '统计 图表 用量',
   'bell': '通知 提醒',
   'bell-ring': '通知 提醒 响铃',

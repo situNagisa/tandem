@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, ChevronDown, FlaskConical, GitFork, Info, KeyRound, Mic, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Webhook } from 'lucide-react'
+import { BadgeDollarSign, BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, ChevronDown, FlaskConical, GitFork, Info, KeyRound, Mic, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { useAppStore } from '../../store/useAppStore'
@@ -40,11 +40,13 @@ import { VoiceSection } from './VoiceSection'
 import { BrowserSection } from './BrowserSection'
 import { EvalsSection } from './EvalsSection'
 import { ModelRoutingSection } from './ModelRoutingSection'
+import { ModelPricesSection } from './ModelPricesSection'
 
 const PAGE_ICONS: Record<SettingsPageId, typeof Server> = {
   general: SlidersHorizontal,
   hosts: Server,
   profiles: Sparkles,
+  prices: BadgeDollarSign,
   routing: GitFork,
   'usage-budgets': BarChart3,
   permissions: ShieldCheck,
@@ -377,6 +379,7 @@ export function SettingsDialog() {
             {tab === 'browser' && <BrowserSection />}
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'routing' && <ModelRoutingSection />}
+            {tab === 'prices' && <ModelPricesSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'accounts' && <WorkstationSection />}
             {tab === 'gateway' && <GatewaySection />}

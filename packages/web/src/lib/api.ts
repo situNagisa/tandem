@@ -72,7 +72,11 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelInfo,
+  ModelPriceEntry,
   ModelPriceInfo,
+  ModelPricePreview,
+  ModelPriceTable,
+  ModelPriceVendor,
   PermissionInsights,
   PermissionRule,
   SandboxStatus,
@@ -754,6 +758,23 @@ export const api = {
     request<InjectionSnapshot>(h, `/api/sessions/${sessionId}/injections`),
   sessionUsage: (h: HostConfig, sessionId: string) =>
     request<SessionUsageBreakdown>(h, `/api/sessions/${sessionId}/usage`),
+
+  priceTable: (h: HostConfig) => request<ModelPriceTable>(h, '/api/model-prices'),
+  savePriceVendor: (h: HostConfig, id: string, input: { source?: string; rule?: unknown }) =>
+    request<{ vendor: ModelPriceVendor }>(h, `/api/model-prices/vendors/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  refreshPriceVendor: (h: HostConfig, id: string) =>
+    request<{ preview: ModelPricePreview }>(h, `/api/model-prices/vendors/${encodeURIComponent(id)}/refresh`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  applyPriceVendor: (h: HostConfig, id: string, models: ModelPriceEntry[]) =>
+    request<{ vendor: ModelPriceVendor }>(h, `/api/model-prices/vendors/${encodeURIComponent(id)}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ models }),
+    }),
 
   memory: (h: HostConfig, scope: MemoryScope, project?: string) =>
     request<MemoryFile>(h, `/api/memory${qs({ scope, project })}`),

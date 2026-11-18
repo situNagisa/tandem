@@ -17,6 +17,7 @@ import { registerHostRoutes } from './routes/host.js';
 import { registerDoctorRoutes } from './routes/doctor.js';
 import { registerProfileRoutes } from './routes/profiles.js';
 import { registerModelRoutes } from './routes/models.js';
+import { registerModelPriceRoutes } from './routes/model-prices.js';
 import { registerSessionRoutes } from './routes/sessions.js';
 import { registerPermissionRoutes } from './routes/permissions.js';
 import { registerHookRoutes } from './routes/hooks.js';
@@ -151,6 +152,7 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
 
   registerProfileRoutes(app, deps);
   registerModelRoutes(app, deps);
+  registerModelPriceRoutes(app, deps);
   registerSessionRoutes(app, deps);
   registerPermissionRoutes(app, deps);
   registerHookRoutes(app, deps);

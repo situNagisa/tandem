@@ -680,6 +680,20 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-sonnet-4-5'],
       defaultModel: 'claude-sonnet-5-5',
       createdAt: Date.now() - 25_000,
+      groups: [
+        {
+          // MODEL-2 明细会话用分组自定义单价：官方价格表在用例之间可被刷新，不能绑死官方表。
+          id: 'g-price-rows',
+          name: '明细会话',
+          apiKey: 'reg-key-claude-price',
+          models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'future-model-x'],
+          defaultModel: 'claude-opus-5-5',
+          price: {
+            'claude-opus-5-5': { input: 4, output: 20 },
+            'claude-sonnet-5-5': { input: 2, output: 10 },
+          },
+        },
+      ],
     },
     {
       // MODEL-8：分组倍率只属于分组，用量明细注明倍率而不展示乘出来的单价。
@@ -1103,6 +1117,7 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       }),
     ], {
       profileId: 'p-claude',
+      groupId: 'g-price-rows',
       model: 'claude-opus-5-5',
       usage: { inputTokens: 3_000_000, outputTokens: 0, costUsd: 6 },
       updatedAt: Date.now() - 970,

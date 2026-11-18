@@ -29,6 +29,7 @@ npm run dev:web                  # Web 开发服务器（代理到工作站地�
 node scripts/ui-audit.mjs        # UI 原语防回退检查：ui/ 目录外的手写菜单/弹层/原生下拉（0 问题才通过）
 
 npm test                         # 单元测试（server: node:test + tsx；web: vitest）
+# 官方模型单价：设置 →「模型价格」按厂商查看，并在同一页配置定价页地址与解析规则后一键刷新（先预览差异再写入）
 npm run smoke                    # Playwright 端到端冒烟（临时工作站 + 假 provider，需先 build）
 node scripts/check.mjs           # 提交前全量：docs → build → debug-artifacts → ui-audit → decisions → test → smoke → regression → release
 ```

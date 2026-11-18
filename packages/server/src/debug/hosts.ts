@@ -41,6 +41,7 @@ export async function ensureDebugHosts(options: DebugHostsOptions): Promise<void
       hostId,
       selfUrl: options.selfUrl,
       modelBridge: options.modelBridge,
+      workstationHome: options.home,
     }));
   options.extraContexts.set(hostId, ctx);
   try {

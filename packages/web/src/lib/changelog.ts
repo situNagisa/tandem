@@ -424,10 +424,10 @@ export const CHANGELOG: ChangelogRelease[] = [
       },
       {
         id: 'price-multiplier',
-        title: '按账号与分组设置价格倍率',
+        title: '按分组设置价格倍率',
         summary:
-          '实际花费 = 官方参考价 × 账号倍率 × 分组倍率；中转常见 0.3×、1.5× 直接填，用量页按实记账。',
-        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.multiplier' },
+          '实际花费 = 官方价 × 分组倍率；中转常见 0.3×、1.5× 直接填在分组里，用量页按实记账。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.groups' },
       },
       {
         id: 'turn-outline-usage',

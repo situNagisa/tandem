@@ -14,6 +14,7 @@ import type {
   ProfileKey,
   ProviderKind,
   ReasoningEffort,
+  UnitPrice,
 } from '@tandem/protocol';
 import type {
   HostConfig,
@@ -187,6 +188,8 @@ export class ProfileStore {
           defaultModel: p.defaultModel ?? p.models?.[0] ?? '',
           ...(this.mirror ? { proxied: true } : {}),
         };
+        // MODEL-3：倍率只属于分组；旧数据里的账号级倍率直接丢弃（内测不迁移）。
+        delete (profile as { multiplier?: number }).multiplier;
         // 老数据没有 groups，按无分组账号处理；分组里的单 apiKey 迁移为 keys[0]
         const groups = normalizeStoredGroups(p.groups);
         if (groups.length) profile.groups = groups;
@@ -223,8 +226,6 @@ export class ProfileStore {
       defaultModel: input.defaultModel || normalizeModels(input.models)[0] || '',
       createdAt: now,
     };
-    const multiplier = normalizeMultiplier((input as { multiplier?: unknown }).multiplier);
-    if (multiplier !== undefined) profile.multiplier = multiplier;
     const price = normalizePrice((input as { price?: unknown }).price);
     if (price) profile.price = price;
     const caps = normalizeModelCapabilities(input.modelCapabilities);
@@ -256,13 +257,7 @@ export class ProfileStore {
       if (input.balanceQuery) next.balanceQuery = { ...input.balanceQuery };
       else delete next.balanceQuery;
     }
-    // multiplier 是协议 Profile 的倍率字段：不传保持原值，null 表示恢复默认 1。
-    if (input.multiplier !== undefined) {
-      const multiplier = normalizeMultiplier(input.multiplier);
-      if (multiplier !== undefined) next.multiplier = multiplier;
-      else delete next.multiplier;
-    }
-    // price 是协议 Profile 的只读展示字段：更新时允许作为扩展字段传入，null 表示清除
+    // price 是自定义单价：更新时允许作为扩展字段传入，null 表示清除
     const rawPrice = (input as { price?: unknown }).price;
     if (rawPrice !== undefined) {
       const price = normalizePrice(rawPrice);
@@ -319,7 +314,6 @@ export class ProfileStore {
       apiKeyMasked: profile.apiKeyMasked ?? maskApiKey(profile.apiKey),
       models: [...profile.models],
       defaultModel: profile.defaultModel,
-      ...(profile.multiplier !== undefined ? { multiplier: profile.multiplier } : {}),
       ...(profile.price ? { price: { ...profile.price } } : {}),
       ...(profile.modelCapabilities
         ? { modelCapabilities: structuredClone(profile.modelCapabilities) }
@@ -382,7 +376,6 @@ export class ProfileStore {
         ...(item.balance ? { balance: { ...item.balance } } : {}),
         models: normalizeModels(item.models),
         defaultModel: item.defaultModel || normalizeModels(item.models)[0] || '',
-        ...(item.multiplier !== undefined ? { multiplier: item.multiplier } : {}),
         ...(item.price ? { price: normalizePrice(item.price)! } : {}),
         ...(item.modelCapabilities ? { modelCapabilities: normalizeModelCapabilities(item.modelCapabilities)! } : {}),
         ...(item.groups?.length
@@ -408,6 +401,7 @@ export class ProfileStore {
                 models: normalizeModels(group.models),
                 defaultModel: group.defaultModel || normalizeModels(group.models)[0] || '',
                 ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
+                ...(group.price ? { price: normalizePrice(group.price)! } : {}),
                 ...(typeof group.longContext === 'boolean' ? { longContext: group.longContext } : {}),
                 ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
                 ...(group.modelCapabilities
@@ -492,19 +486,22 @@ export function normalizeMultiplier(value: unknown): number | undefined {
   return Math.round(n * 1e6) / 1e6;
 }
 
-export function normalizePrice(
-  value: unknown,
-): Record<string, { input: number; output: number }> | undefined {
+export function normalizePrice(value: unknown): Record<string, UnitPrice> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const out: Record<string, { input: number; output: number }> = {};
+  const out: Record<string, UnitPrice> = {};
   for (const [model, raw] of Object.entries(value as Record<string, unknown>)) {
     const name = model.trim();
     if (!name || !raw || typeof raw !== 'object') continue;
-    const price = raw as { input?: unknown; output?: unknown };
+    const price = raw as Record<string, unknown>;
     const input = Number(price.input);
     const output = Number(price.output);
     if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) continue;
-    out[name] = { input, output };
+    const entry: UnitPrice = { input, output };
+    for (const key of ['cacheRead', 'cacheWrite5m', 'cacheWrite1h'] as const) {
+      const value = Number(price[key]);
+      if (price[key] !== undefined && Number.isFinite(value) && value >= 0) entry[key] = value;
+    }
+    out[name] = entry;
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -651,6 +648,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
     const apiKey = typeof g.apiKey === 'string' ? g.apiKey : '';
     const keys = normalizeStoredKeys(g.keys, apiKey, id);
     const multiplier = normalizeMultiplier(g.multiplier);
+    const price = normalizePrice((g as { price?: unknown }).price);
     out.push({
       id,
       name,
@@ -663,6 +661,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
       defaultModel:
         (typeof g.defaultModel === 'string' && g.defaultModel.trim()) || models[0] || '',
       ...(multiplier !== undefined ? { multiplier } : {}),
+      ...(price ? { price } : {}),
       ...(caps ? { modelCapabilities: caps } : {}),
       ...(typeof g.longContext === 'boolean' ? { longContext: g.longContext } : {}),
       ...(normalizeFallbackIds(g.fallbackGroupIds)?.length
@@ -773,6 +772,7 @@ function buildGroups(
     const fallbackGroupIds = normalizeFallbackIds(raw.fallbackGroupIds) ?? old?.fallbackGroupIds;
     const multiplier =
       raw.multiplier !== undefined ? normalizeMultiplier(raw.multiplier) : old?.multiplier;
+    const price = raw.price !== undefined ? normalizePrice(raw.price) : old?.price;
     out.push({
       id,
       name,
@@ -786,6 +786,7 @@ function buildGroups(
       defaultModel:
         (typeof raw.defaultModel === 'string' && raw.defaultModel.trim()) || old?.defaultModel || models[0] || '',
       ...(multiplier !== undefined ? { multiplier } : {}),
+      ...(price ? { price } : {}),
       ...(caps ? { modelCapabilities: caps } : {}),
       ...(typeof raw.longContext === 'boolean' ? { longContext: raw.longContext } : {}),
       ...(fallbackGroupIds?.length ? { fallbackGroupIds } : {}),
@@ -820,6 +821,7 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
     models: [...group.models],
     defaultModel: group.defaultModel,
     ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
+    ...(group.price ? { price: { ...group.price } } : {}),
     ...(typeof group.longContext === 'boolean' ? { longContext: group.longContext } : {}),
     ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
     ...(group.modelCapabilities
@@ -870,6 +872,10 @@ export function effectiveProfile(profile: StoredProfile, groupId?: string): Stor
     models: group.models.length ? [...group.models] : [...profile.models],
     defaultModel: group.defaultModel || group.models[0] || profile.defaultModel,
     ...(group.multiplier !== undefined ? { groupMultiplier: group.multiplier } : {}),
+    // 自定义单价：分组里的同名覆盖账号级（MODEL-1），计价时原样使用、不乘倍率。
+    ...(profile.price || group.price
+      ? { price: { ...profile.price, ...group.price } }
+      : {}),
     ...(profile.modelCapabilities || group.modelCapabilities
       ? {
           modelCapabilities: {

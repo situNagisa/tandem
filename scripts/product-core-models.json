@@ -4,7 +4,9 @@
     {
       "id": "session-tree",
       "name": "会话树归并（分叉/子代理沿 parent 找根）",
-      "owner": ["packages/web/src/lib/sessionTree.ts"],
+      "owner": [
+        "packages/web/src/lib/sessionTree.ts"
+      ],
       "features": [
         {
           "what": "沿 parentId / forkedFrom 一路向上找根",
@@ -16,7 +18,9 @@
     {
       "id": "run-status",
       "name": "运行状态（忙/等：running、waiting_permission、retrying）",
-      "owner": ["packages/web/src/store/appStore/helpers.ts"],
+      "owner": [
+        "packages/web/src/store/appStore/helpers.ts"
+      ],
       "features": [
         {
           "what": "把三种运行状态合并判定为「忙/等」",
@@ -28,7 +32,9 @@
     {
       "id": "model-capabilities",
       "name": "模型能力（上下文窗口内置表、思考强度档位）",
-      "owner": ["packages/server/src/providers/capabilities.ts"],
+      "owner": [
+        "packages/server/src/providers/capabilities.ts"
+      ],
       "features": [
         {
           "what": "按模型 id 写死上下文窗口",
@@ -55,7 +61,9 @@
     {
       "id": "scroll-position",
       "name": "消息区滚动位置（对 .chat-scroll 写 scrollTop）",
-      "owner": ["packages/web/src/lib/scroll/"],
+      "owner": [
+        "packages/web/src/lib/scroll/"
+      ],
       "features": [
         {
           "what": "对会话滚动区写 scrollTop",
@@ -64,6 +72,24 @@
         }
       ],
       "note": "滚动控制器的纯函数在 lib/scroll/chatScroll.ts，控制器落地后写 scrollTop 只允许留在该目录；lib/jump.ts 的 root.scrollTop 属于跳转动画，未被这条精确特征命中（宁可漏报）。"
+    },
+    {
+      "id": "model-prices",
+      "name": "价格表（官方单价数据文件 + 按厂商刷新规则）",
+      "owner": [
+        "packages/server/src/model-prices.ts"
+      ],
+      "features": [
+        {
+          "what": "写死官方单价条目（{ model, input, output … }）",
+          "pattern": "\\{\\s*model:\\s*'(?:claude|gpt|gemini|deepseek|glm|kimi|qwen)[\\w.-]*',\\s*input:"
+        },
+        {
+          "what": "读写价格数据文件 model-prices.json",
+          "pattern": "model-prices\\.json"
+        }
+      ],
+      "note": "官方单价只在 packages/server/src/model-prices.ts 维护（内置表 + 工作站数据目录的 model-prices.json）；计价用 usage.ts 的 resolvePriceForModel，设置页按厂商配置解析规则并刷新。"
     }
   ]
 }

@@ -9,6 +9,7 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   routing: '自动路由',
   hosts: '主机',
   accounts: '工作站',
+  prices: '模型价格',
   gateway: '网关',
   permissions: '权限',
   hooks: 'Hooks',
@@ -65,6 +66,8 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'profiles.models', tab: 'profiles', title: '模型列表', keywords: ['模型', '默认模型'] },
   { id: 'profiles.group-key', tab: 'profiles', title: '分组 Key', keywords: ['Key', '分组', '替换', '删除', '冷却'] },
   { id: 'profiles.prices', tab: 'profiles', title: '模型价格覆盖', keywords: ['价格', '计费', '费用'] },
+  { id: 'prices.vendors', tab: 'prices', title: '官方价格表', keywords: ['价格', '单价', '厂商', '官方', '计价'] },
+  { id: 'prices.refresh', tab: 'prices', title: '刷新官方价', keywords: ['刷新', '定价页', '解析规则', '抓取'] },
 
   { id: 'routing.candidates', tab: 'routing', title: '自动路由候选池', keywords: ['自动', '路由', '候选', '模型', '档位', '快速', '强力'] },
   { id: 'routing.preference', tab: 'routing', title: '取向默认', keywords: ['取向', '分工', '省钱', '均衡', '质量优先', '偏好'] },
@@ -184,6 +187,7 @@ export type SettingsPageId =
   | 'extensions'
   | 'evals'
   | 'gateway'
+  | 'prices'
   | 'sync'
 
 export interface SettingsPage {
@@ -205,6 +209,7 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   { id: 'general', label: '通用', tabs: ['general'] },
   { id: 'hosts', label: '主机', tabs: ['hosts'] },
   { id: 'profiles', label: '账号与模型', tabs: ['profiles'] },
+  { id: 'prices', label: '模型价格', tabs: ['prices'] },
   { id: 'routing', label: '自动路由', tabs: ['routing'] },
   { id: 'usage-budgets', label: '用量与预算', tabs: ['usage', 'budgets'] },
   { id: 'permissions', label: '权限', tabs: ['permissions'] },
@@ -226,7 +231,7 @@ export const SETTINGS_PAGES: SettingsPage[] = [
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'common', label: '基础', pages: ['general', 'hosts', 'workstation', 'shares'] },
-  { id: 'models', label: '模型与账号', pages: ['profiles', 'routing', 'usage-budgets'] },
+  { id: 'models', label: '模型与账号', pages: ['profiles', 'prices', 'routing', 'usage-budgets'] },
   { id: 'safety', label: '权限与安全', pages: ['permissions', 'secrets'] },
   { id: 'automation', label: 'Agent 与自动化', pages: ['agent', 'schedules', 'memory'] },
   { id: 'appearance', label: '外观与辅助', pages: ['appearance', 'notifications', 'voice', 'browser'] },

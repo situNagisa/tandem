@@ -36,6 +36,18 @@ export interface ModelCapabilities {
   contextNote?: string;
 }
 
+/** 每百万 token 的单价（美元）。输入/输出必填；缓存读写缺省时按协议倍率折算。 */
+export interface UnitPrice {
+  input: number;
+  output: number;
+  /** 缓存读（命中）单价。 */
+  cacheRead?: number;
+  /** 缓存写 5 分钟 TTL 单价。 */
+  cacheWrite5m?: number;
+  /** 缓存写 1 小时 TTL 单价。 */
+  cacheWrite1h?: number;
+}
+
 export interface Profile {
   id: string;
   name: string;            // 显示名，如 "公司 Anthropic"、"个人 OpenAI"
@@ -44,9 +56,8 @@ export interface Profile {
   apiKeyMasked: string;    // 只回传掩码，明文 key 永不下发给客户端
   models: string[];        // 该账号可选模型（无分组时使用）
   defaultModel: string;
-  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；默认 1。 */
-  multiplier?: number;
-  price?: Record<string, { input: number; output: number }>; // 每百万 token 美元，按模型覆盖内置单价（覆盖后不再乘倍率）
+  /** 自定义单价（账号级兜底，分组里的同名单价优先）；设置后不再乘分组倍率。 */
+  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>; // 手动覆盖模型能力（思考强度/上下文）
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   /** 余额查询配置；缺省 auto（只识别已知平台）。 */
@@ -100,15 +111,17 @@ export interface ProfileGroup {
   baseUrl?: string;        // 缺省用账号 baseUrl
   models: string[];
   defaultModel: string;
-  /** 价格倍率：缺省继承账号倍率（等效 1）。 */
+  /** 价格倍率：官方价 × 分组倍率；缺省 1。倍率只属于分组。 */
   multiplier?: number;
+  /** 分组里按模型设置的自定义单价（优先于官方价，不再乘倍率）。 */
+  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   /** 该分组新会话的上下文默认：true=1M，false=200K，缺省跟随模型能力。 */
   longContext?: boolean;
   /** 备用分组链（同一账号内，按顺序）：额度将尽时交接给第一个可用的分组。 */
   fallbackGroupIds?: string[];
 }
-export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; multiplier?: number; modelCapabilities?: Record<string, ModelCapabilities>; longContext?: boolean; fallbackGroupIds?: string[] }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; multiplier?: number; price?: Record<string, UnitPrice>; modelCapabilities?: Record<string, ModelCapabilities>; longContext?: boolean; fallbackGroupIds?: string[] }
 /** 余额查询平台：auto 按 baseUrl 识别已知平台；none 关闭；custom 用 url/path。 */
 export type BalancePlatform =
   | 'auto'
@@ -147,9 +160,7 @@ export interface ProfileInput {
   apiKey?: string;         // 更新时不传表示不改
   models: string[];
   defaultModel: string;
-  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；默认 1。 */
-  multiplier?: number;
-  price?: Record<string, { input: number; output: number }>;
+  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: ProfileGroupInput[]; // 传入即整体替换；带 id 且不带 apiKey 表示保留原 key
 }
@@ -658,12 +669,63 @@ export interface ModelPriceInfo {
   cacheWrite1h?: number;
   /** 价格来源：账号自定义单价，或内置官方价（菜单显示「参考价」）。 */
   source?: 'account' | 'builtin';
-  /** 内置官方价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 计算说明。 */
+  /** 官方价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 说明。 */
   officialInput?: number;
   officialOutput?: number;
-  /** 实际生效的倍率；缺省视为 1。 */
-  accountMultiplier?: number;
+  /** 实际生效的分组倍率；缺省视为 1。 */
   groupMultiplier?: number;
+}
+
+// ---------- 价格表（MODEL 领域） ----------
+/** 官方价解析规则：JSON 里的数组，或 HTML 表格按列下标取值。 */
+export type ModelPriceRule =
+  | { type: 'json'; path?: string }
+  | { type: 'html-table'; table?: string; columns: Partial<Record<'model' | 'input' | 'output' | 'cacheWrite' | 'cacheRead', number>> };
+
+/** 厂商价格表里的一条模型单价（每百万 token 美元）。 */
+export interface ModelPriceEntry extends UnitPrice {
+  model: string;
+  /** 分段价：单次请求提示 token 超过 threshold 时整条按 rates 计。 */
+  longPrompt?: { threshold: number; rates: UnitPrice };
+}
+
+/** 一个厂商的官方价获取方式与已收录单价。 */
+export interface ModelPriceVendor {
+  id: string;
+  label: string;
+  /** 定价页地址，界面上作为来源链接。 */
+  source: string;
+  /** 一键刷新用的解析规则；缺省按 JSON `models` 数组解析。 */
+  rule?: ModelPriceRule;
+  /** 最近一次写入/刷新日期（YYYY-MM-DD）。 */
+  updatedAt?: string;
+  models: ModelPriceEntry[];
+}
+
+export interface ModelPriceTable {
+  version: number;
+  /** 价格数据文件位置（工作站数据目录）。 */
+  file?: string;
+  vendors: ModelPriceVendor[];
+}
+
+/** 刷新预览：新价格先给差异，用户确认后才写入。 */
+export interface ModelPriceChange {
+  model: string;
+  status: 'added' | 'changed' | 'removed' | 'same';
+  before?: ModelPriceEntry;
+  after?: ModelPriceEntry;
+  /** 发生变化的单价字段（input / output / cacheRead / cacheWrite5m …）。 */
+  fields: string[];
+}
+
+export interface ModelPricePreview {
+  vendorId: string;
+  source: string;
+  fetchedAt: number;
+  changes: ModelPriceChange[];
+  /** 解析出的完整价格表，确认时原样写回。 */
+  models: ModelPriceEntry[];
 }
 // GET /api/models/prices?profileId=&groupId= -> { prices: Record<model, ModelPriceInfo> }
 // 思考强度能力来源：provider 模型列表接口若提供（如 OpenRouter supported_parameters、Anthropic models 的 capabilities）则用之；

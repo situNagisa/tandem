@@ -124,6 +124,8 @@ export class AccountProfileStore {
         groups: normalizeStoredGroups(item.groups),
         proxied: false,
       };
+      // MODEL-3：倍率只属于分组，旧数据里的账号级倍率丢弃。
+      delete (profile as { multiplier?: number }).multiplier;
       if (!profile.groups?.length) delete profile.groups;
       store.upsertStored(profile);
       imported++;

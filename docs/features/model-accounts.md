@@ -1,10 +1,10 @@
 # 账号与模型（设置）
 
-> 更新：2026-11-13。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37/R72/R81。协议字段见 `packages/protocol/src/index.ts`。
+> 更新：2026-11-18。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37/R72/R81。协议字段见 `packages/protocol/src/index.ts`。
 
 ## 归属：工作站账号级（反馈12#01 · R59）
 
-- 模型账号（provider 账号、分组、Key、倍率、模型勾选）属于**登录的工作站账号**，与具体主机无关。设置 → 账号与模型在所有主机上显示同一份数据，不随「当前主机」变化。
+- 模型账号（provider 账号、分组、Key、分组倍率、模型勾选）属于**登录的工作站账号**，与具体主机无关。设置 → 账号与模型在所有主机上显示同一份数据，不随「当前主机」变化。
 - Key **只加密保存在工作站**：`workstation/profiles.json`（AES-256-GCM，0600），密钥单独放 `workstation/profiles.key`（0600）。主机只同步元数据与 `apiKeyMasked`，任何主机本地文件都没有 Key 明文。
 - 主机上的 agent 发起模型请求时，直接调用工作站进程内的模型账号入口（`workstation/bridge.ts`：`profileId/分组/模型/消息/工具` → 真实 Key 调上游 → `block_start/text/tool_input/rate_limit/effort_dropped/done/error`），不签名、不转发。主机回放为原有 provider 回调，所以 UI、工具循环、用量显示都不变。
 - 同组多 Key 的故障切换、冷却、额度头解析都在工作站完成；`done` 事件带 `keyId/costUsd`，工作站按账号 + 主机记账到 `workstation/model-usage.json`。

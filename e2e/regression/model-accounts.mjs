@@ -516,7 +516,8 @@ desktop('模型菜单与用量卡：Opus 5.5 显示官方价 $4/$20，不再出�
       assert.equal(cardText.includes('估算'), false, `用量卡仍有估算字样：${cardText}`)
     })
 
-desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）', async (page) => {
+desktop('分组倍率在模型菜单注明、不展示乘出来的单价（MODEL-3）', async (page) => {
+      // 倍率只属于分组：账号创建时不带倍率，分组倍率 0.8 生效。
       const account = await api(wsBase, token, '/api/workstation/profiles', {
         method: 'POST',
         body: JSON.stringify({
@@ -526,7 +527,6 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
           apiKey: 'reg-key-multiplier',
           models: ['gpt-4o-mini'],
           defaultModel: 'gpt-4o-mini',
-          multiplier: 0.5,
           groups: [
             {
               name: '低价渠道',
@@ -587,11 +587,10 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
         const text = await tip.innerText()
         assert.match(
           text,
-          /官方 \$0\.15\/M × 账号 0\.5 × 分组 0\.8 = \$0\.06\/M/,
-          `模型菜单没有显示倍率计算方式：${text}`,
+          /官方 \$0\.15 · 输出 \$0\.6 \/ 百万 tok × 分组 0\.8/,
+          `模型菜单没有显示官方价与分组倍率：${text}`,
         )
-        assert.match(text, /输出 \$0\.6\/M → \$0\.24\/M/, `模型菜单没有显示输出最终价：${text}`)
-        assert.match(text, /缓存读 \$0\.03/, `模型菜单没有显示最终缓存价：${text}`)
+        assert.doesNotMatch(text, /=\s*\$/, `模型菜单展示了乘出来的单价：${text}`)
         await page.keyboard.press('Escape')
 
         // 发一条消息：用量明细要注明「分组倍率」，记账金额乘倍率。
@@ -609,12 +608,12 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
         const usage = await api(base, token, `/api/sessions/${session.id}/usage`)
         const usageRow = usage.rows.find((item) => item.model === 'gpt-4o-mini')
         assert.ok(usageRow, `用量明细里没有 gpt-4o-mini：${JSON.stringify(usage.rows)}`)
-        const expected = (usageRow.inputTokens * 0.06 + usageRow.outputTokens * 0.24) / 1e6
+        const expected = (usageRow.inputTokens * 0.12 + usageRow.outputTokens * 0.48) / 1e6
         assert.ok(
           Math.abs(usageRow.costUsd - expected) < 1e-8,
-          `记账金额没有乘倍率：${usageRow.costUsd} != ${expected}`,
+          `记账金额没有乘分组倍率：${usageRow.costUsd} != ${expected}`,
         )
-        assert.equal(usage.prices['gpt-4o-mini']?.accountMultiplier, 0.5, '明细缺少账号倍率')
+        assert.equal(usage.prices['gpt-4o-mini']?.accountMultiplier, undefined, '明细仍带账号倍率')
         assert.equal(usage.prices['gpt-4o-mini']?.groupMultiplier, 0.8, '明细缺少分组倍率')
       } finally {
         if (session?.id) {

@@ -284,17 +284,14 @@ export function modelPrices(host: Host, profileId: string,
   for (const model of models) {
     const resolved = resolvePriceForModel(profile, model);
     if (resolved) {
-      const account = resolved.accountMultiplier ?? 1;
       const group = resolved.groupMultiplier ?? 1;
-      const multiplied = account !== 1 || group !== 1;
       out[model] = {
         ...priceInfoFor(resolved.price, profile.kind),
         source: resolved.source,
-        ...(multiplied && resolved.official
+        ...(group !== 1 && resolved.official
           ? {
               officialInput: resolved.official.input,
               officialOutput: resolved.official.output,
-              accountMultiplier: account,
               groupMultiplier: group,
             }
           : {}),
@@ -389,7 +386,6 @@ export function sessionUsageBreakdown(host: Host, rec: SessionRecord): SessionUs
       ...priceInfoFor(resolved.price, profile?.kind ?? 'openai-compatible'),
       source: resolved.source,
       ...(resolved.official ? { officialInput: resolved.official.input, officialOutput: resolved.official.output } : {}),
-      ...(resolved.accountMultiplier ? { accountMultiplier: resolved.accountMultiplier } : {}),
       ...(resolved.groupMultiplier ? { groupMultiplier: resolved.groupMultiplier } : {}),
     };
   }
