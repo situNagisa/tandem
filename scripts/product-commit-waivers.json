@@ -1,0 +1,6 @@
+{
+  "description": "提交规则检查的已知违规豁免。历史提交不改写（不 force push），在此逐条登记提交号与原因。只用于已发生且已在后续提交中处理的情况。",
+  "waivers": {
+    "2803f75": "协调者 spec 提交误带了另一子代理 git rm 的 toolcard/SubagentStream.tsx；该删除属于反馈1920#02，见 5501c2f。"
+  }
+}

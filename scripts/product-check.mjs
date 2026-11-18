@@ -26,7 +26,7 @@
  *   node scripts/product-check.mjs --base <ref>    提交规则的基线分支（默认 main）
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import {
   idsIn,
@@ -264,7 +264,13 @@ if (!isRepo) {
     hashes = (git(['rev-list', '-n', '30', 'HEAD']) ?? '').split('\n').filter(Boolean)
   }
 
+  // 已知违规豁免：历史提交无法改写（不 force push），在此登记提交号与原因后跳过；只能加不能静默。
+  let waived = {}
+  try {
+    waived = JSON.parse(readFileSync(new URL('./product-commit-waivers.json', import.meta.url), 'utf8')).waivers ?? {}
+  } catch {}
   for (const hash of hashes) {
+    if (Object.keys(waived).some((h) => hash.startsWith(h))) continue
     const subject = git(['show', '-s', '--format=%s', hash]) ?? ''
     const parents = (git(['show', '-s', '--format=%P', hash]) ?? '').split(/\s+/).filter(Boolean)
     if (parents.length > 1) continue
