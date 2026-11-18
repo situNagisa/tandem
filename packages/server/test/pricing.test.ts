@@ -99,22 +99,23 @@ test('账号单价覆盖：精确匹配 → 前缀匹配 → 内置表', () => {
   });
 });
 
-test('倍率：实际价格 = 官方价 × 账号倍率 × 分组倍率（含缓存价）', () => {
+test('倍率只属于分组：实际价格 = 官方价 × 分组倍率（含缓存价）', () => {
   const profile = {
+    // 账号级倍率不属于规格（MODEL-3）：夹带进来也不参与计价。
     multiplier: 0.5,
     groupMultiplier: 0.8,
   } as unknown as StoredProfile;
   const resolved = resolvePriceForModel(profile, 'claude-sonnet-4-5');
-  assert.equal(resolved?.price.input, 1.2);
-  assert.equal(resolved?.price.output, 6);
-  assert.equal(resolved?.price.cacheRead, 0.12);
-  assert.equal(resolved?.price.cacheWrite5m, 1.5);
+  assert.equal(resolved?.price.input, 2.4);
+  assert.equal(resolved?.price.output, 12);
+  assert.equal(resolved?.price.cacheRead, 0.24);
+  assert.equal(resolved?.price.cacheWrite5m, 3);
   assert.equal(resolved?.source, 'builtin');
   assert.equal(resolved?.official?.input, 3);
   assert.equal(resolved?.official?.output, 15);
-  assert.equal(resolved?.accountMultiplier, 0.5);
   assert.equal(resolved?.groupMultiplier, 0.8);
-  assert.deepEqual(priceForModel(profile, 'gpt-5-mini'), { input: 0.1, output: 0.8 });
+  assert.equal((resolved as { accountMultiplier?: number }).accountMultiplier, undefined);
+  assert.deepEqual(priceForModel(profile, 'gpt-5-mini'), { input: 0.2, output: 1.6 });
 });
 
 test('按模型覆盖单价优先，覆盖后不再乘倍率', () => {
@@ -127,7 +128,8 @@ test('按模型覆盖单价优先，覆盖后不再乘倍率', () => {
     price: { input: 9, output: 18 },
     source: 'account',
   });
-  assert.deepEqual(priceForModel(profile, 'o3'), { input: 0.3, output: 1.2 });
+  // 官方价只乘分组倍率：o3 $2/$8 × 0.5。
+  assert.deepEqual(priceForModel(profile, 'o3'), { input: 1, output: 4 });
 });
 
 test('无官方价的模型在倍率下仍返回 undefined', () => {
@@ -206,5 +208,5 @@ test('effectiveProfile 合并分组倍率，计费与菜单共用同一函数', 
   } as unknown as StoredProfile;
   const effective = effectiveProfile(profile, 'g1');
   assert.equal(effective.groupMultiplier, 0.8);
-  assert.deepEqual(priceForModel(effective, 'gpt-5-mini'), { input: 0.1, output: 0.8 });
+  assert.deepEqual(priceForModel(effective, 'gpt-5-mini'), { input: 0.2, output: 1.6 });
 });

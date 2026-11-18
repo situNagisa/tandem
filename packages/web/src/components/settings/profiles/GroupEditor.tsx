@@ -20,9 +20,11 @@ import { mergeFetchedSelection } from '../../../lib/modelSelection'
 import type { HostConfig } from '../../../lib/types'
 import { Button, IconButton } from '../../ui/Button'
 import { MenuSelect } from '../../ui/Menu'
+import { PriceOverrides } from './PriceOverrides'
 import {
   GROUP_KIND_LABELS,
   type GroupDraft,
+  type PriceMap,
   groupBaseUrlPlaceholder,
   inferGroupBaseUrl,
   inputCls,
@@ -76,6 +78,7 @@ export function GroupEditor({
   const [error, setError] = useState<string | null>(null)
   const [fallbackIds, setFallbackIds] = useState<string[]>(existing?.fallbackGroupIds ?? [])
   const [multiplier, setMultiplier] = useState(String(existing?.multiplier ?? 1))
+  const [price, setPrice] = useState<PriceMap>(existing?.price ?? {})
   const [longContext, setLongContext] = useState<'auto' | '1m' | '200k'>(
     existing?.longContext === undefined ? 'auto' : existing.longContext ? '1m' : '200k',
   )
@@ -185,6 +188,7 @@ export function GroupEditor({
       models: selected,
       defaultModel: selected.includes(defaultModel) ? defaultModel : selected[0],
       ...(Number.isFinite(Number(multiplier)) ? { multiplier: Number(multiplier) } : {}),
+      ...(Object.keys(price).length ? { price } : {}),
       ...(longContext === 'auto' ? {} : { longContext: longContext === '1m' }),
       ...(fallbackIds.length
         ? { fallbackGroupIds: fallbackIds.filter((id) => id !== existing?.id) }
@@ -301,7 +305,7 @@ export function GroupEditor({
           label="价格倍率"
           stacked
           wide
-          hint="默认 1.0；实际价 = 官方价 × 账号倍率 × 分组倍率，这里在账号倍率之上再叠加，如 0.8。"
+          hint="默认 1.0；实际价 = 官方价 × 分组倍率，如 0.8。倍率只属于分组。"
         >
           <input
             id={`group-multiplier-${existing?.id ?? 'new'}`}
@@ -333,6 +337,8 @@ export function GroupEditor({
           />
         </SettingRow>
       </div>
+
+      <PriceOverrides models={selected} price={price} onChange={setPrice} />
 
       <div className="mt-2">
         <SettingRow label="备用分组（额度将尽时按顺序交接）" stacked wide>

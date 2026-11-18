@@ -15,6 +15,7 @@ import type {
   Session,
   SessionStatus,
   Todo,
+  UnitPrice,
   Usage,
 } from '@tandem/protocol';
 
@@ -52,8 +53,10 @@ export interface StoredProfileGroup {
   baseUrl?: string;
   models: string[];
   defaultModel: string;
-  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；缺省 1。 */
+  /** 价格倍率：官方价 × 分组倍率；缺省 1。倍率只属于分组。 */
   multiplier?: number;
+  /** 分组里按模型设置的自定义单价（优先于官方价，不再乘倍率）。 */
+  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   /** 该分组新会话的上下文默认：true=1M，false=200K，缺省跟随模型能力。 */
   longContext?: boolean;
@@ -70,12 +73,10 @@ export interface StoredProfile {
   apiKey: string;
   models: string[];
   defaultModel: string;
-  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；默认 1。 */
-  multiplier?: number;
   /** effectiveProfile 合并分组后的分组倍率（仅服务端运行时使用，不落盘）。 */
   groupMultiplier?: number;
-  /** 每百万 token 美元，覆盖内置参考单价（按模型名精确或前缀匹配）；覆盖后不再乘倍率。 */
-  price?: Record<string, { input: number; output: number }>;
+  /** 自定义单价（账号级兜底，分组里的同名覆盖优先；按模型名精确或前缀匹配）；设置后不再乘倍率。 */
+  price?: Record<string, UnitPrice>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: StoredProfileGroup[];
   createdAt: number;

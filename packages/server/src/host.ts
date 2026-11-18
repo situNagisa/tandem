@@ -62,7 +62,7 @@ import type {
   ToolResult,
 } from './types.js';
 import { UsageStore } from './usage.js';
-import { migrateEstimatedUsage } from './price-migration.js';
+import { loadModelPrices } from './model-prices.js';
 import { GatewayStore } from './gateway/store.js';
 import { BudgetStore } from './budgets.js';
 import { Inbox } from './inbox.js';
@@ -292,7 +292,7 @@ export class Host {
   constructor(
     config?: HostConfig,
     home = tandemHome(),
-    options: { remote?: boolean; modelBridge?: WorkstationModelBridge } = {},
+    options: { remote?: boolean; modelBridge?: WorkstationModelBridge; dataHome?: string } = {},
   ) {
     this.home = home;
     this.modelBridge = options.modelBridge;
@@ -382,8 +382,9 @@ export class Host {
       this.mirrorProfiles = true;
       this.profiles = new ProfileStore(home, { file: 'workstation-profiles.json', mirror: true });
     }
-    // 价格表 schema 迁移要在账号（含工作站镜像账号）就绪后跑，才能带上账号/分组倍率。
-    migrateEstimatedUsage(this);
+    // 价格表在读用量/计价前载入；已记账的花费按记账时单价保存，不重算历史（MODEL-7）。
+    // 工作站进程内的主机上下文共用工作站数据目录里的价格表（dataHome），独立主机用自身数据目录。
+    loadModelPrices(options.dataHome ?? home);
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     if (!this.remote) this.mcp.start();
     // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）

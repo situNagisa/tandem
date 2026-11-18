@@ -254,6 +254,7 @@ export type Theme = 'light' | 'dark' | 'system'
 export type GraphDirection = 'newest-top' | 'newest-bottom'
 export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'gateway' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals' | 'secrets' | 'routing'
   | 'accounts'
+  | 'prices'
 
 export type AppRoute =
   | { kind: 'home' }

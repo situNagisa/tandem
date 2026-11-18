@@ -24,6 +24,8 @@ export interface OpenHostContextOptions {
   /** 执行器主机：只经 env 访问远端，不启动本机扫描。 */
   remote?: boolean;
   modelBridge: WorkstationModelBridge;
+  /** 工作站数据目录：价格表等跨主机共用；缺省用主机自己的数据目录。 */
+  workstationHome?: string;
 }
 
 export async function openHostContext(options: OpenHostContextOptions): Promise<HostContext> {
@@ -36,6 +38,7 @@ export async function openHostContext(options: OpenHostContextOptions): Promise<
   const host = new Host(undefined, options.home, {
     ...(options.remote ? { remote: true } : {}),
     modelBridge: options.modelBridge,
+    ...(options.workstationHome ? { dataHome: options.workstationHome } : {}),
   });
   host.accounts.retargetWorkstation(options.selfUrl);
   const app = await createApp(host);

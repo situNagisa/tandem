@@ -33,23 +33,23 @@ test('掩码识别：回传的掩码与空值都视为未修改', () => {
   assert.equal(looksMaskedKey(''), false);
 });
 
-test('账号/分组倍率保存后重新加载仍在，计价按官方价 × 账号倍率 × 分组倍率', () => {
+test('分组倍率保存后重新加载仍在，计价按官方价 × 分组倍率（账号倍率丢弃）', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'tandem-multiplier-'));
   const created = new ProfileStore(dir).create(
     baseInput({ multiplier: 0.5, groups: [group({ id: 'g1', multiplier: 0.8 })] }),
   );
-  // 重启后从存储读回：规范化不能丢倍率。
+  // 重启后从存储读回：分组倍率不能丢；账号级倍率不属于规格，读到就丢弃。
   const reloaded = new ProfileStore(dir).get(created.id)!;
-  assert.equal(reloaded.multiplier, 0.5, '账号倍率重新加载后丢失');
+  assert.equal((reloaded as unknown as { multiplier?: number }).multiplier, undefined, '账号倍率应被丢弃');
   assert.equal(reloaded.groups?.[0]?.multiplier, 0.8, '分组倍率重新加载后丢失');
   const effective = effectiveProfile(reloaded, 'g1');
   assert.equal(effective.groupMultiplier, 0.8);
   assert.deepEqual(priceForModel(effective, 'claude-sonnet-4-5'), {
-    input: 1.2,
-    output: 6,
-    cacheWrite5m: 1.5,
-    cacheWrite1h: 2.4,
-    cacheRead: 0.12,
+    input: 2.4,
+    output: 12,
+    cacheWrite5m: 3,
+    cacheWrite1h: 4.8,
+    cacheRead: 0.24,
   });
 });
 
@@ -59,7 +59,7 @@ test('只设分组倍率时计价为官方价 × 分组倍率', () => {
     baseInput({ groups: [group({ id: 'g1', multiplier: 0.5 })] }),
   );
   const reloaded = new ProfileStore(dir).get(created.id)!;
-  assert.equal(reloaded.multiplier, undefined);
+  assert.equal((reloaded as unknown as { multiplier?: number }).multiplier, undefined);
   const effective = effectiveProfile(reloaded, 'g1');
   assert.deepEqual(priceForModel(effective, 'claude-sonnet-4-5'), {
     input: 1.5,

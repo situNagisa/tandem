@@ -1,6 +1,6 @@
 # 模型路由：分工与取向
 
-> 更新：2026-11-17。**主会话模型恒定，执行交给 Task 子代理**：prompt 缓存按模型/服务商命中，来回换模型会让整段上下文按未命中价重发。按难度自动选主会话模型另见 `architecture.md` 的 `model-routing.ts` 与设置「模型路由」。
+> 更新：2026-11-18。**主会话模型恒定，执行交给 Task 子代理**：prompt 缓存按模型/服务商命中，来回换模型会让整段上下文按未命中价重发。按难度自动选主会话模型另见 `architecture.md` 的 `model-routing.ts` 与设置「模型路由」。
 
 ## 三个维度
 
@@ -64,9 +64,10 @@
 
 ## 价格与倍率
 
-价格只有两个来源：账号按模型自定义单价，或内置表逐型号收录的官方价（来源 URL 与核对日期见 `usage.ts` 表头）。官方价按模型名前缀取最长命中，**不在型号之间借价或按家族估算**；官方页没列出的型号视为未知单价，菜单与用量卡显示「未知单价 / 该型号尚未收录官方价」，并复用「单价未设置 → 跳到该账号单价覆盖」入口。
-- 每条官方价含输入、输出、缓存读、缓存写 5m / 1h 单价；计费按未命中输入、输出、`cache_read`、`cache_creation`（5m/1h 拆分，只给总数时按 5m）分别乘价。Haiku 5.5 按单次请求提示 token（输入 + 缓存读写）超过 100K 切高价档。
-- 实际价 = 官方价 × 账号倍率 × 分组倍率；账号覆盖价不乘倍率。历史花费不重算，例外是 2026-11 一次性迁移把旧表借价记的账按官方价重算（`price-migration.ts`，`usage.json` `version: 2`）。`npm run check-prices` 抓官方页与内置表比对。
+价格只有两个来源：官方价格表，或分组里为某个模型设置的自定义单价（账号级自定义单价作为分组未设时的兜底）。官方价格表由 `packages/server/src/model-prices.ts` 唯一实现，数据存在工作站数据目录的 `model-prices.json`（首启用内置表初始化）；设置 →「模型价格」按厂商列出四种单价、分段价、来源链接与更新时间。官方价按模型名前缀取最长命中，**不在型号之间借价或按家族估算**；没列出的型号视为未知单价，菜单与用量卡显示「未知单价 / 该型号尚未收录官方价」，并复用「单价未设置 → 跳到该账号单价覆盖」入口。
+- 每条官方价含输入、输出、缓存读、缓存写 5m / 1h 单价；计费按未命中输入、输出、`cache_read`、`cache_creation`（5m/1h 拆分，只给总数时按 5m）分别乘价（Haiku 5.5 提示 token 超过 100K 切高价档）。实际价 = 官方价 × 分组倍率（倍率只属于分组，缺省 1）；自定义单价不乘倍率。界面只展示官方价与倍率，不展示乘出来的单价。历史花费按记账时单价保存，调价不改历史（MODEL-7）。
+- 每个厂商的定价页地址与解析规则可在「模型价格」页配置（JSON `models` 数组，或 `{ "type": "html-table", "table": "<选择器>", "columns": {…} }`）；「刷新」由工作站进程抓取定价页，先给差异预览，确认后写入；失败如实显示原因并保留旧价。
+
 ## 思考强度
 
 `packages/server/src/providers/capabilities.ts` 是唯一能力表：按「型号 × 实际请求协议」推断档位、厂商叫法与参数映射；provider 返回能力优先，账号/分组可覆盖。同一张表也给出上下文窗口与 1M 开关能力（原生 1M / 4.6 需 beta / 4.5 仅 200K），见 `model-accounts.md`「长上下文（1M）开关」。Anthropic adaptive 型号（4.7 及以后，Sonnet 4.6 无 xhigh）发 `thinking: { type: "adaptive", display: "summarized" }` + `output_config.effort`，档位 low/medium/high/xhigh/max、标签「低 · low … 超高 · xhigh / 最高 · max」、无 token 预算；`display: "summarized"` 必须显式传（默认 omitted 时思考文本为空，UI 看不到「思考了 Ns」）；只有支持 `thinking: { type: "disabled" }` 的型号才有「关」，Opus 5.5 / Sonnet 5.5 / Fable/Mythos 5.x 不能关闭。
@@ -74,6 +75,5 @@ manual 型号（4.6 及以前）走 `budget_tokens`，保留 2K/8K/16K/32K 标�
 
 ## 验证与限制
 
-- 单测：`model-routing.test.ts`（矩阵、取向档位、学到的偏好）、`session-route-migration.test.ts`（迁移）。
-- 回归：`e2e/regression.mjs`「分工路由」用例（取向关闭不注入取向段但分工照常且有 Task、分工关闭零派发、取向省钱整单交执行者、分工积极、确认卡、成本上限、学到的偏好）与模型菜单用例；单测 `session-route-migration` 覆盖旧原生字段迁移。
+- 单测：`model-routing.test.ts`（矩阵、取向档位、学到的偏好）、`session-route-migration.test.ts`（迁移）；回归：`e2e/regression.mjs`「分工路由」用例（取向关闭不注入取向段但分工照常且有 Task、分工关闭零派发、取向省钱整单交执行者、分工积极、确认卡、成本上限、学到的偏好）与模型菜单用例。
 - 未做：第三个维度「验证策略」（用户提出，另做）；结构化子任务自动并行 fan-out；跨任务预算；执行者自动验收。

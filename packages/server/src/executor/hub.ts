@@ -164,6 +164,7 @@ export class ExecutorHub {
       selfUrl: this.options.selfUrl(),
       remote: true,
       modelBridge: this.options.modelBridge,
+      workstationHome: this.options.home,
     });
     return ctx;
   }

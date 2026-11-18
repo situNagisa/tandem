@@ -37,13 +37,10 @@ function priceText(price: ModelPriceInfo): string {
     price.cacheWrite !== undefined && price.cacheWrite > 0
       ? ` · 缓存写 $${fmt(price.cacheWrite)}（5m）`
       : ''
-  const account = price.accountMultiplier ?? 1
+  // 倍率只属于分组（MODEL-3）：只展示官方价与分组倍率，不展示乘出来的单价。
   const group = price.groupMultiplier ?? 1
-  if (price.officialInput !== undefined && (account !== 1 || group !== 1)) {
-    const factors = [`官方 $${fmt(price.officialInput)}/M`]
-    if (account !== 1) factors.push(`账号 ${fmt(account)}`)
-    if (group !== 1) factors.push(`分组 ${fmt(group)}`)
-    return `${factors.join(' × ')} = $${fmt(price.input)}/M · 输出 $${fmt(price.officialOutput ?? 0)}/M → $${fmt(price.output)}/M${cache}${write}`
+  if (price.officialInput !== undefined && group !== 1) {
+    return `官方 $${fmt(price.officialInput)} · 输出 $${fmt(price.officialOutput ?? 0)} / 百万 tok × 分组 ${fmt(group)}`
   }
   const prefix = price.source === 'builtin' ? '参考价 · ' : ''
   return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}${write}`

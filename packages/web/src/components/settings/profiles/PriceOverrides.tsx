@@ -29,7 +29,7 @@ export function PriceOverrides({
     <div className="mt-3 rounded-lg border border-border bg-bg/40 px-2.5 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[13px] font-medium text-text-soft">自定义单价</span>
-        <span className="text-[13px] text-muted">每百万 token 美元，覆盖内置参考价</span>
+        <span className="text-[13px] text-muted">每百万 token 美元，覆盖官方价、不乘倍率</span>
       </div>
       {Object.keys(price).length > 0 && (
         <div className="mt-1.5 space-y-1">
