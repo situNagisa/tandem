@@ -61,7 +61,8 @@
   --t-git-added: #527a45;
   --t-git-deleted: #a85d50;
   --t-git-renamed: #7a6a94;
-  --t-git-plus: #1a7f37;
+  /* 增删文字色：浅色下 +N 落在 surface-2 卡片上也需 ≥4.5:1（#1a7f37 只有 4.38）。 */
+  --t-git-plus: #15702f;
   --t-git-minus: #cf222e;
 
   --t-code-block-bg: #f1ede4;
