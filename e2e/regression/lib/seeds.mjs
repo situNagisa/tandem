@@ -682,6 +682,27 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       createdAt: Date.now() - 25_000,
     },
     {
+      // MODEL-8：分组倍率只属于分组，用量明细注明倍率而不展示乘出来的单价。
+      id: 'p-mult',
+      name: '倍率账号',
+      kind: 'anthropic',
+      baseUrl: `http://127.0.0.1:${mockPort}`,
+      apiKey: 'reg-key-mult',
+      models: ['claude-opus-5-5'],
+      defaultModel: 'claude-opus-5-5',
+      createdAt: Date.now() - 26_000,
+      groups: [
+        {
+          id: 'g-mult',
+          name: '五折分组',
+          apiKey: 'reg-key-mult-group',
+          models: ['claude-opus-5-5'],
+          defaultModel: 'claude-opus-5-5',
+          multiplier: 0.5,
+        },
+      ],
+    },
+    {
       id: 'p-quota',
       name: '限流账号',
       kind: 'openai-compatible',
@@ -1065,6 +1086,42 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
         usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 4 },
       }),
     ], { profileId: 'p-claude', groupId: undefined, model: 'claude-opus-5-5', usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 4 }, updatedAt: Date.now() - 975 }),
+    // MODEL-2/8：三个模型各一条记账记录；future-model-x 未收录官方价，显示「未知单价」与去设置入口。
+    mk('price-rows', '模型价格明细会话', [
+      message('pmr1', 'user', '这个会话各模型花了多少'),
+      message('pmr2', 'assistant', 'Opus 5.5 的记账。', {
+        model: 'claude-opus-5-5',
+        usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 4 },
+      }),
+      message('pmr3', 'assistant', 'Sonnet 5.5 的记账。', {
+        model: 'claude-sonnet-5-5',
+        usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 2 },
+      }),
+      message('pmr4', 'assistant', '未收录价格的模型。', {
+        model: 'future-model-x',
+        usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 0 },
+      }),
+    ], {
+      profileId: 'p-claude',
+      model: 'claude-opus-5-5',
+      usage: { inputTokens: 3_000_000, outputTokens: 0, costUsd: 6 },
+      updatedAt: Date.now() - 970,
+    }),
+    // MODEL-8：分组倍率 0.5 的记账会话（意图记账 $2；启动时的一次性历史迁移可能改写成官方价，
+    // 用例以接口返回的记账值为准，迁移问题另记在验收回复里）。
+    mk('mult-price', '分组倍率价格会话', [
+      message('mp1', 'user', '这个分组实际花了多少'),
+      message('mp2', 'assistant', '按分组倍率记账。', {
+        model: 'claude-opus-5-5',
+        usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 2 },
+      }),
+    ], {
+      profileId: 'p-mult',
+      groupId: 'g-mult',
+      model: 'claude-opus-5-5',
+      usage: { inputTokens: 1_000_000, outputTokens: 0, costUsd: 2 },
+      updatedAt: Date.now() - 968,
+    }),
     // 反馈2121#01：adaptive 型号的思考强度档位（无 token 预算标签）。
     mk('claude-effort', 'Claude 思考强度会话', [
       message('ce1', 'user', '这道题先想一想'),
