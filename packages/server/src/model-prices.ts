@@ -359,17 +359,24 @@ export function applyVendorPrices(id: string, models: unknown): ModelPriceVendor
   if (!vendor || !Array.isArray(models)) return undefined;
   const entries = models.map(normalizeEntry).filter((entry): entry is ModelPriceEntry => !!entry);
   if (!entries.length) return undefined;
-  // 只覆盖定价页列出的型号；页面上没出现的旧型号保留原价，避免旧会话所用型号突然变成未知单价。
-  const merged = [...vendor.models];
-  for (const entry of entries) {
-    const index = merged.findIndex((item) => item.model === entry.model);
-    if (index >= 0) merged[index] = entry;
-    else merged.push(entry);
-  }
-  vendor.models = merged;
+  vendor.models = mergeVendorModels(vendor, entries);
   vendor.updatedAt = today();
   saveModelPrices();
   return structuredClone(vendor);
+}
+
+/**
+ * 合并刷新结果：只覆盖解析结果里出现的字段，`cacheWrite1h` / `longPrompt` 等页面没解析到的
+ * 字段保留原值；页面没出现的旧型号整体保留，避免旧会话所用型号突然变成未知单价。
+ */
+function mergeVendorModels(vendor: ModelPriceVendor, entries: ModelPriceEntry[]): ModelPriceEntry[] {
+  const merged = vendor.models.map((entry) => ({ ...entry }));
+  for (const entry of entries) {
+    const index = merged.findIndex((item) => item.model === entry.model);
+    if (index >= 0) merged[index] = { ...merged[index]!, ...entry };
+    else merged.push(entry);
+  }
+  return merged;
 }
 
 /** 去掉供应商前缀后的小写模型名，兼容 openrouter 的 "vendor/model" 写法。 */
@@ -434,7 +441,9 @@ export async function refreshVendorPrices(id: string): Promise<ModelPricePreview
   }
   const models = rule.type === 'json' ? parseJson(text, rule.path) : parseHtmlTable(text, rule);
   if (!models.length) throw new Error('解析结果为空，请检查解析规则');
-  return { vendorId: vendor.id, source: vendor.source, fetchedAt: Date.now(), changes: diffVendor(vendor, models), models };
+  // 预览按合并后的结果给差异：解析规则没覆盖的字段沿用旧值，确认后写入的就是这份结果。
+  const merged = mergeVendorModels(vendor, models);
+  return { vendorId: vendor.id, source: vendor.source, fetchedAt: Date.now(), changes: diffVendor(vendor, merged), models: merged };
 }
 
 function parseJson(text: string, rulePath?: string): ModelPriceEntry[] {
