@@ -150,10 +150,6 @@ export const ToolCard = memo(function ToolCard({
         )
       })()
     : undefined
-  const parentDepth = subagentId
-    ? (subagents?.[subagentId]?.summary?.depth ?? 1)
-    : 0
-  const agentDepth = sub?.summary?.depth ?? parentDepth + 1
   const displayMeta = isTask
     ? { ...meta, verb: agentKind() }
     : meta
@@ -476,7 +472,6 @@ export const ToolCard = memo(function ToolCard({
                 loadFullOutput={loadFullOutput}
                 pick={pick}
                 sub={sub}
-                agentDepth={agentDepth}
                 linkedId={result?.subagent?.id}
                 parentId={parentId}
                 activeHostId={activeHostId}

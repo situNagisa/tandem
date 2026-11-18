@@ -7,7 +7,6 @@ import type { SubagentSession } from '../../lib/types'
 import { isExecutingStatus, isRetryingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 import { AgentElapsed, agentKind, partialString, str } from './helpers'
 import { OutputBlock } from './OutputBlock'
-import { SubagentStream } from './SubagentStream'
 
 export function TaskBody({
   input,
@@ -16,7 +15,6 @@ export function TaskBody({
   output,
   isError,
   running,
-  depth,
   linkedId,
   parentSessionId,
   hostId,
@@ -28,7 +26,6 @@ export function TaskBody({
   output: string
   isError: boolean
   running: boolean
-  depth: number
   linkedId?: string
   parentSessionId?: string | null
   hostId?: string | null
@@ -123,11 +120,7 @@ export function TaskBody({
           </button>
         )}
       </div>
-      {summary ? (
-        <div className={cn(depth > 1 && 'pl-2 border-l border-border/60')}>
-          <SubagentStream id={summary.id} depth={depth} />
-        </div>
-      ) : (
+      {!summary && (
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
           {running ? (
             <span className="shimmer-text">正在创建{agentKind()}会话…</span>

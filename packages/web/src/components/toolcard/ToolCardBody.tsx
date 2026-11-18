@@ -28,7 +28,6 @@ interface ToolCardBodyProps {
   loadFullOutput: () => Promise<string | null>
   pick: (key: string) => string
   sub: SubagentSession | undefined
-  agentDepth: number
   linkedId: string | undefined
   parentId: string | null | undefined
   activeHostId: string | undefined
@@ -55,7 +54,6 @@ export function ToolCardBody({
   loadFullOutput,
   pick,
   sub,
-  agentDepth,
   linkedId,
   parentId,
   activeHostId,
@@ -187,7 +185,6 @@ export function ToolCardBody({
           output={output}
           isError={isError}
           running={running}
-          depth={agentDepth}
           linkedId={result?.subagent?.id}
           parentSessionId={parentId}
           hostId={activeHostId}

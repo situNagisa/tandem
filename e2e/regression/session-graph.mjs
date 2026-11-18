@@ -228,6 +228,27 @@ desktop('反馈1603#06：代理卡行尾不再有 ⋯，右键子代理行仍可
       assert.equal(await page.locator('[role="menu"]').count(), 0, 'Esc 后右键菜单没有关闭')
     })
 
+desktop('反馈1920#02：子代理工具卡不内嵌会话预览，展开后只有一行信息，点击进入子代理会话', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      await page.getByRole('button', { name: '更多', exact: true }).first().click()
+      await page.locator('[role="menuitem"]').filter({ hasText: '子代理' }).first().click()
+      await page.locator('[role="menu"][aria-label="子代理"] [role="menuitem"]').filter({ hasText: '价格页前端' }).first().evaluate((el) => el.click())
+      const card = page.locator('[data-tool-use-id]').filter({ has: page.locator('button.tool-row', { hasText: '子代理' }) }).first()
+      await card.locator('.tool-detail').waitFor({ timeout: 10_000 })
+      const detail = await card.locator('.tool-detail').innerText()
+      assert.match(detail, /价格页前端/, `展开的子代理卡缺少标题行：${detail}`)
+      assert.equal(detail.includes('任务提示词'), false, '子代理卡仍内嵌了任务提示词块')
+      assert.equal(detail.includes('子代理会话'), false, '子代理卡仍内嵌了子代理会话预览')
+      assert.ok((await card.locator('button[aria-label^="打开"]').count()) > 0, '子代理卡缺少进入会话入口')
+      await card.locator('button.tool-row').click()
+      await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
+      await page.locator('button[data-tip^="返回主会话"]').first().click()
+      await page.locator('[data-turn-id]').first().waitFor()
+    })
+
 desktop('反馈2108#02：子代理工具行点击直接进入子代理会话，不展开卡片', async (page) => {
       let demo = await api(base, token, '/api/demo')
       if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
