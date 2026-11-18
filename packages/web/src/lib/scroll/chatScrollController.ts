@@ -113,6 +113,12 @@ const VERIFY_STABLE_FRAMES = 2
 /** 锚点收尾：content-visibility 的行高会分几批变成真实值，稳定帧要留够余量。 */
 const ANCHOR_STABLE_FRAMES = 6
 const VERIFY_MAX_FRAMES = 12
+/**
+ * 跳转前先渲染目标上方这么多行。视口外的行停在 `contain-intrinsic-size` 的估计高度，
+ * 到位后才渲染会让上方内容骤然收缩、目标被顶出视口（跳转落点偏上 46px 的根因）；
+ * 复核窗口只盯内容高度稳定，渲染更晚就补不回来，所以落点要在真实行高上算。
+ */
+const JUMP_FORCE_ROWS = 60
 
 /** 用户最后一次滚动方向：只有它能把「滚回底部」认作恢复跟随。 */
 type ScrollIntent = 'up' | 'down' | null
@@ -157,6 +163,9 @@ class ChatScrollControllerImpl implements ChatScrollController {
   private reachTopArmed = true
   private jumpAnim: JumpAnimation | null = null
   private jumpTimer = 0
+  /** 跳转期间被强制渲染的行（跳完后恢复 content-visibility 交给浏览器）。 */
+  private forcedRows: HTMLElement[] = []
+  private forcedFor: HTMLElement | null = null
 
   private ro: ResizeObserver | null = null
   private boxRo: ResizeObserver | null = null
@@ -264,6 +273,7 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (this.jumpTimer) window.clearTimeout(this.jumpTimer)
     this.jumpTimer = 0
     this.jumpAnim = null
+    this.releaseForcedRows()
     this.anchorRequested = false
   }
 
@@ -645,7 +655,9 @@ class ChatScrollControllerImpl implements ChatScrollController {
       }
     }
     const anim = this.jumpAnim
-    if (anim && this.findTargetEl(target)) {
+    const el = this.findTargetEl(target)
+    if (anim && el) {
+      this.forceRowsAbove(el)
       if (!anim.started) {
         this.startJumpAnimation(anim, box)
       } else if (anim.verifying) {
@@ -691,8 +703,33 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (this.jumpAnim?.token === token) this.jumpAnim = null
     if (this.jumpTimer) window.clearTimeout(this.jumpTimer)
     this.jumpTimer = 0
+    this.releaseForcedRows()
     settleJump(token)
     this.emit(this.jumpEndListeners, token)
+  }
+
+  /** 跳转前把目标上方一段行渲染成真实高度，落点与复核都基于真实布局。 */
+  private forceRowsAbove(el: HTMLElement): void {
+    if (this.forcedFor === el) return
+    this.releaseForcedRows()
+    const content = this.content
+    if (!content) return
+    const row = el.closest<HTMLElement>('.msg-row') ?? el
+    const rows = [...content.querySelectorAll<HTMLElement>('.msg-row')]
+    const end = Math.max(0, rows.indexOf(row))
+    this.forcedFor = el
+    for (let i = Math.max(0, end - JUMP_FORCE_ROWS); i < end; i++) {
+      rows[i].style.contentVisibility = 'visible'
+      this.forcedRows.push(rows[i])
+    }
+    // 读布局：逐行真实高度要在算落点前生效。
+    if (this.forcedRows.length) void el.getBoundingClientRect().top
+  }
+
+  private releaseForcedRows(): void {
+    for (const row of this.forcedRows) row.style.contentVisibility = ''
+    this.forcedRows = []
+    this.forcedFor = null
   }
 
   private stepJump(now: number, dt: number, heightChanged: boolean): void {

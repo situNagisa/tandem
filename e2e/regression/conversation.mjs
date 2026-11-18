@@ -1271,19 +1271,53 @@ desktop('轮次条点击第 30 轮精准定位（不跳到相邻轮）', async (
       assert.ok(target, '展开后的面板中找不到第 30 轮行')
       await page.mouse.move(target.x, target.y)
       await page.waitForTimeout(80)
-      await page.mouse.down()
-      await page.mouse.up()
-      await page.waitForTimeout(900)
-      assert.equal(await hit.getAttribute('aria-valuenow'), '30', '点击后落点不是第 30 轮')
-      const position = await page.evaluate(() => {
-        const root = document.querySelector('.chat-scroll')
-        const el = root.querySelector('[data-turn-id="u30"]')
-        if (!el) return null
-        return el.getBoundingClientRect().top - root.getBoundingClientRect().top
-      })
-      assert.ok(position !== null, '找不到第 30 轮消息')
-      assert.ok(position >= -4 && position <= 120, `第 30 轮未定位到视口顶部（${Math.round(position)}px）`)
-      assert.match(await nav.innerText(), /第\s*30\s*\/\s*40\s*轮/, '计数胶囊与落点不一致')
+      // 这条用例要抓的根因只在负载/慢机上出现（目标上方的行到位后才渲染，把目标顶出视口）。
+      // 默认环境下 900ms 时往往已被落点复核救回，所以用 CPU 节流稳定放大它，断言才测得到。
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 12 })
+      const landed = () =>
+        page.evaluate(() => {
+          const root = document.querySelector('.chat-scroll')
+          const el = root.querySelector('[data-turn-id="u30"]')
+          if (!el) return null
+          return {
+            pos: el.getBoundingClientRect().top - root.getBoundingClientRect().top,
+            height: root.scrollHeight,
+          }
+        })
+      try {
+        await page.mouse.down()
+        await page.mouse.up()
+        await page.waitForTimeout(900)
+        assert.equal(await hit.getAttribute('aria-valuenow'), '30', '点击后落点不是第 30 轮')
+        const first = await landed()
+        assert.ok(first, '找不到第 30 轮消息')
+        assert.ok(
+          first.pos >= -4 && first.pos <= 120,
+          `第 30 轮未定位到视口顶部（${Math.round(first.pos)}px）`,
+        )
+        // 落点在目标上方的行已是真实高度时才算：估计高度若在到位后才换成真实值，上方内容收缩
+        // 会把目标顶出视口，内容高度也会继续变小。到位后再等一会儿复核两者都没变。
+        await page.waitForTimeout(600)
+        const settled = await landed()
+        assert.ok(settled, '找不到第 30 轮消息')
+        assert.equal(
+          settled.height,
+          first.height,
+          `跳转到位后内容高度仍在变（${first.height} → ${settled.height}）`,
+        )
+        assert.ok(
+          Math.abs(settled.pos - first.pos) <= 4,
+          `跳转落点随后漂移（${Math.round(first.pos)}px → ${Math.round(settled.pos)}px）`,
+        )
+        assert.ok(
+          settled.pos >= -4 && settled.pos <= 120,
+          `第 30 轮随后被挤出视口顶部（${Math.round(settled.pos)}px）`,
+        )
+        assert.match(await nav.innerText(), /第\s*30\s*\/\s*40\s*轮/, '计数胶囊与落点不一致')
+      } finally {
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {})
+      }
     })
 
 desktop('反馈16#02：宽表格与长代码行限制在正文宽度内、块内部横向滚动', async (page) => {
