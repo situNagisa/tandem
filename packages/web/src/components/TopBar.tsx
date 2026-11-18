@@ -41,6 +41,7 @@ import { ConnectionDot } from './StatusDot'
 import { Badge } from './ui/Badge'
 import { Button, IconButton } from './ui/Button'
 import { Menu as UiMenu } from './ui/Menu'
+import { DiffStat } from './ui/DiffStat'
 import { Input } from './ui/Controls'
 import { useSubagentRows } from './chat/SessionHeaderTools'
 import { PrPanel } from './PrPanel'
@@ -594,8 +595,7 @@ export function TopBar() {
           <span className="hidden font-sans text-[12px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>
-              <span className="hidden text-[var(--t-git-plus)] sm:inline">+{additions}</span>
-              <span className="hidden text-[var(--t-git-minus)] sm:inline">−{deletions}</span>
+              <DiffStat additions={additions} deletions={deletions} className="hidden sm:inline" />
             </>
           )}
         </Button>
@@ -656,8 +656,7 @@ export function TopBar() {
               )}
             >
               <FileDiff size={15} className="shrink-0 text-text!" />
-              <span className="hidden text-[var(--t-git-plus)] sm:inline">+{additions}</span>
-              <span className="hidden text-[var(--t-git-minus)] sm:inline">−{deletions}</span>
+              <DiffStat additions={additions} deletions={deletions} className="hidden sm:inline" />
             </Button>
           )}
         </div>

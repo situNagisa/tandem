@@ -9,6 +9,7 @@ import { EmptyState } from '../ui/EmptyState'
 import { Button } from '../ui/Button'
 import { Markdown } from '../Markdown'
 import { Spinner } from '../ui/Spinner'
+import { DiffStat } from '../ui/DiffStat'
 import { HoverCard } from '../ui/HoverCard'
 import { AgentsCard } from './AgentsCard'
 import { ContextCard } from './ContextCard'
@@ -314,8 +315,8 @@ export function PanelBodyContent({
           <div className="mb-1.5 flex items-baseline gap-2 text-[12px] text-text-soft">
             <span className="tabular-nums">{fileChanges.length} 个文件</span>
             <span className="flex-1" />
-            <span className="font-mono text-[12px] tabular-nums text-muted">
-              +{additions} −{deletions}
+            <span className="font-mono text-[12px] tabular-nums">
+              <DiffStat additions={additions} deletions={deletions} />
             </span>
           </div>
           <div className="space-y-px">
@@ -327,8 +328,8 @@ export function PanelBodyContent({
                 <span className="min-w-0 flex-1 truncate font-mono text-text-soft" data-tip={f.path}>
                   {f.path}
                 </span>
-                <span className="shrink-0 font-mono text-[12px] tabular-nums text-muted">
-                  +{f.additions} −{f.deletions}
+                <span className="shrink-0 font-mono text-[12px] tabular-nums">
+                  <DiffStat additions={f.additions} deletions={f.deletions} />
                 </span>
               </div>
             ))}
