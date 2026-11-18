@@ -12,8 +12,8 @@ export function DiffStat({
 }) {
   return (
     <>
-      <span className={cn('text-[var(--t-git-plus)]', className)}>+{additions}</span>{' '}
-      <span className={cn('text-[var(--t-git-minus)]', className)}>−{deletions}</span>
+      <span className={cn('text-[var(--t-git-plus)]', className)}>+{additions}</span>
+      <span className={cn('ml-1 text-[var(--t-git-minus)]', className)}>−{deletions}</span>
     </>
   )
 }
