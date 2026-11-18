@@ -509,6 +509,34 @@ async function main() {
     if ((FROM !== null || TO !== null) && !selected.length) throw new Error(`--from/--to ${FROM ?? ''}..${TO ?? ''} 没有匹配任何用例`)
     if (CHANGED && !selected.length) throw new Error('--changed 没有匹配任何用例')
 
+    // 价格表是同一 Host 上的共享文件：[MODEL-6] 刷新会改写它。每条用例结束后恢复快照，
+    // 避免后续用例读到前序用例改过的官方价（登记用例本身不改）。
+    let priceSnapshot = null
+    const readPriceTable = () => api(base, token, '/api/model-prices')
+    const capturePriceTable = async () => {
+      priceSnapshot = await readPriceTable()
+    }
+    const restorePriceTable = async () => {
+      if (!priceSnapshot) return
+      const now = await readPriceTable()
+      if (JSON.stringify(now.vendors) === JSON.stringify(priceSnapshot.vendors)) return
+      for (const vendor of priceSnapshot.vendors) {
+        await api(base, token, `/api/model-prices/vendors/${encodeURIComponent(vendor.id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ source: vendor.source, rule: vendor.rule ?? null }),
+        })
+        await api(base, token, `/api/model-prices/vendors/${encodeURIComponent(vendor.id)}/apply`, {
+          method: 'POST',
+          body: JSON.stringify({ models: vendor.models }),
+        })
+      }
+      // 恢复后更新快照（apply 会刷新 updatedAt），后续用例以恢复后的表为准。
+      await capturePriceTable()
+    }
+    await capturePriceTable().catch((error) => {
+      console.warn(`regression: 价格表快照失败，跳过用例间恢复：${error.message}`)
+    })
+
     /** 跑一条用例；gate/offline/win32 等用例各自建独立 context（共享 context 会带上前面用例的存储）。 */
     const runCheck = async (check, attempt = 1) => {
       let context
@@ -576,6 +604,9 @@ async function main() {
       } finally {
         await page.close().catch(() => {})
         if (ownContext) await context.close().catch(() => {})
+        await restorePriceTable().catch((error) => {
+          console.warn(`regression: 恢复价格表失败：${error.message}`)
+        })
       }
     }
 

@@ -134,10 +134,11 @@ function useModelPanel({
   const effectiveLongContext = longContext ?? longContextInfo?.default ?? false
 
   useEffect(() => {
-    if (currentProfile) onLoadPrices?.(currentProfile.id, currentGroup?.groupId)
-    // 只在账号/分组变化时加载，避免 prices 回调引用变化导致重复请求
+    // 按会话实际使用的分组取价：没有分组时按账号级（官方价）计费，不能用展示用的首个分组兜底。
+    if (currentProfile) onLoadPrices?.(currentProfile.id, groupId)
+    // 只在账号/会话分组变化时加载，避免 prices 回调引用变化导致重复请求
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProfile?.id, currentGroup?.groupId])
+  }, [currentProfile?.id, groupId])
 
   // 顶部只放最近使用 / 常用的模型（最多 6 个，可跨账号分组）；第一次使用时回退到当前分组。
   // 每次渲染重新读取 localStorage：记录发生在发送消息时，菜单再次打开要立刻反映。
