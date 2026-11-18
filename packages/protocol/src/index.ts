@@ -675,10 +675,45 @@ export interface ModelPriceInfo {
 }
 
 // ---------- 价格表（MODEL 领域） ----------
-/** 官方价解析规则：JSON 里的数组，或 HTML 表格按列下标取值。 */
-export type ModelPriceRule =
+/** 官方价解析规则：JSON 数组、HTML 表格（可转置）、Markdown 表格，或页面脚本里内嵌的表格。 */
+/** 解析规则的列映射；`cacheWrite` 指缓存写 5m，`cacheWrite1h` 指缓存写 1h。 */
+export type ModelPriceColumns = Partial<
+  Record<'model' | 'input' | 'output' | 'cacheWrite' | 'cacheWrite1h' | 'cacheRead', number>
+>;
+
+export type ModelPriceRule = {
+  /** 实际抓取地址；缺省用厂商的 source（界面上的来源链接）。 */
+  url?: string;
+  /** 读到这段文字就停止读取；用于 llms-full.txt 这类整站合并的大文件。 */
+  until?: string;
+} & (
   | { type: 'json'; path?: string }
-  | { type: 'html-table'; table?: string; columns: Partial<Record<'model' | 'input' | 'output' | 'cacheWrite' | 'cacheRead', number>> };
+  | {
+      type: 'html-table';
+      table?: string;
+      /** 列映射；转置表（transpose）可省略。 */
+      columns?: ModelPriceColumns;
+      /** 表是转置的（型号为列、价格项为行）时为 true。 */
+      transpose?: boolean;
+      /** 转置表的型号名所在行（首列文字），默认 MODEL。 */
+      modelRow?: string;
+      /** 转置表里每个价格项对应的行文字（包含即可）。 */
+      rows?: Partial<Record<'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'cacheWrite1h', string>>;
+      /** 同一价格项有多行（如 PEAK / OFF-PEAK）时只取包含这段文字的行。 */
+      variant?: string;
+    }
+  | {
+      type: 'markdown-table';
+      /** 表头包含这段文字的那张 Markdown 表格；缺省取第一张。 */
+      header?: string;
+      columns: ModelPriceColumns;
+    }
+  | {
+      /** 页面脚本里以 JSX `rows:[[…]]` 内嵌的表格（Mintlify DocTable）。 */
+      type: 'script-table';
+      columns: ModelPriceColumns;
+    }
+);
 
 /** 厂商价格表里的一条模型单价（每百万 token 美元）。 */
 export interface ModelPriceEntry extends UnitPrice {

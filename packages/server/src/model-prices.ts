@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import path from 'node:path';
 import type {
   ModelPriceChange,
+  ModelPriceColumns,
   ModelPriceEntry,
   ModelPricePreview,
   ModelPriceRule,
@@ -33,7 +34,14 @@ const DEFAULT_VENDORS: ModelPriceVendor[] = [
     id: 'anthropic',
     label: 'Anthropic',
     source: 'https://platform.claude.com/docs/en/about-claude/pricing',
-    rule: { type: 'html-table', table: 'table', columns: { model: 0, input: 1, output: 2, cacheWrite: 3, cacheRead: 4 } },
+    // 文档站是客户端渲染，价格表在 llms-full.txt 的 Markdown 里；读到后半段就停，避免下载整站。
+    rule: {
+      type: 'markdown-table',
+      url: 'https://platform.claude.com/llms-full.txt',
+      until: 'All other models use the standard 0.1x multiplier',
+      header: '5m cache writes',
+      columns: { model: 0, input: 1, cacheWrite: 2, cacheWrite1h: 3, cacheRead: 4, output: 5 },
+    },
     updatedAt: '2026-11-17',
     models: [
       { model: 'claude-2', input: 8, output: 24 },
@@ -129,7 +137,15 @@ const DEFAULT_VENDORS: ModelPriceVendor[] = [
     id: 'deepseek',
     label: 'DeepSeek',
     source: 'https://api-docs.deepseek.com/quick_start/pricing',
-    rule: { type: 'html-table', table: 'table', columns: { model: 0, input: 1, cacheRead: 2, output: 3 } },
+    // 价格表是转置的：型号为列、价格项为行，同一项分 PEAK / OFF-PEAK 两行。
+    rule: {
+      type: 'html-table',
+      table: 'table',
+      transpose: true,
+      modelRow: 'MODEL',
+      rows: { input: 'INPUT TOKENS (CACHE MISS)', cacheRead: 'INPUT TOKENS (CACHE HIT)', output: 'OUTPUT TOKENS' },
+      variant: 'PEAK',
+    },
     updatedAt: '2026-11-17',
     models: [
       { model: 'deepseek-v4-pro', input: 1.32, output: 3.96, cacheRead: 0.044 },
@@ -175,8 +191,12 @@ const DEFAULT_VENDORS: ModelPriceVendor[] = [
   {
     id: 'kimi',
     label: 'Kimi（Moonshot）',
-    source: 'https://platform.moonshot.cn/docs/pricing/chat',
-    rule: { type: 'html-table', table: 'table', columns: { model: 0, input: 1, output: 2 } },
+    // 价格表由页面脚本里的 DocTable 数据渲染，没有 <table>；用英文站（美元，与价格表一致）。
+    source: 'https://platform.moonshot.ai/docs/pricing/chat',
+    rule: {
+      type: 'script-table',
+      columns: { model: 0, input: 1, output: 2, cacheRead: 3, cacheWrite: 4, cacheWrite1h: 5 },
+    },
     updatedAt: '2026-11-17',
     models: [
       { model: 'kimi-k2', input: 0.6, output: 2.5 },
@@ -202,6 +222,25 @@ const DEFAULT_VENDORS: ModelPriceVendor[] = [
     ],
   },
 ];
+
+/**
+ * 上一版内置的规则与地址。已存在的数据文件不会重新初始化，读取时若某个厂商的规则
+ * 仍与这里完全相同（用户没改过），就换成当前内置规则；用户改过的不动。
+ */
+const PREVIOUS_DEFAULTS: Record<string, { source: string; rule: ModelPriceRule }> = {
+  anthropic: {
+    source: 'https://platform.claude.com/docs/en/about-claude/pricing',
+    rule: { type: 'html-table', table: 'table', columns: { model: 0, input: 1, output: 2, cacheWrite: 3, cacheRead: 4 } },
+  },
+  deepseek: {
+    source: 'https://api-docs.deepseek.com/quick_start/pricing',
+    rule: { type: 'html-table', table: 'table', columns: { model: 0, input: 1, cacheRead: 2, output: 3 } },
+  },
+  kimi: {
+    source: 'https://platform.moonshot.cn/docs/pricing/chat',
+    rule: { type: 'html-table', table: 'table', columns: { model: 0, input: 1, output: 2 } },
+  },
+};
 
 let current: ModelPriceTable = { version: 1, vendors: structuredClone(DEFAULT_VENDORS) };
 let currentHome: string | undefined;
@@ -241,27 +280,84 @@ function withoutModel(entry: ModelPriceEntry): UnitPrice {
   return rates;
 }
 
+const COLUMN_KEYS = ['model', 'input', 'output', 'cacheWrite', 'cacheWrite1h', 'cacheRead'] as const;
+const ROW_KEYS = ['input', 'output', 'cacheRead', 'cacheWrite', 'cacheWrite1h'] as const;
+
+function normalizeColumns(raw: unknown): ModelPriceColumns {
+  const columns = (raw ?? {}) as Record<string, unknown>;
+  const mapped: ModelPriceColumns = {};
+  for (const key of COLUMN_KEYS) {
+    const index = Number(columns[key]);
+    if (Number.isInteger(index) && index >= 0) mapped[key] = index;
+  }
+  return mapped;
+}
+
 function normalizeRule(raw: unknown): ModelPriceRule | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const rule = raw as Record<string, unknown>;
+  const fetch: { url?: string; until?: string } = {};
+  if (typeof rule.url === 'string' && rule.url.trim()) fetch.url = rule.url.trim();
+  if (typeof rule.until === 'string' && rule.until.trim()) fetch.until = rule.until.trim();
   if (rule.type === 'json') {
     const rulePath = typeof rule.path === 'string' ? rule.path.trim() : '';
-    return { type: 'json', ...(rulePath ? { path: rulePath } : {}) };
+    return { ...fetch, type: 'json', ...(rulePath ? { path: rulePath } : {}) };
   }
   if (rule.type === 'html-table') {
-    const columns = (rule.columns ?? {}) as Record<string, unknown>;
-    const mapped: Record<string, number> = {};
-    for (const key of ['model', 'input', 'output', 'cacheWrite', 'cacheRead']) {
-      const index = Number(columns[key]);
-      if (Number.isInteger(index) && index >= 0) mapped[key] = index;
+    const rows: Partial<Record<(typeof ROW_KEYS)[number], string>> = {};
+    if (rule.rows && typeof rule.rows === 'object') {
+      for (const key of ROW_KEYS) {
+        const label = (rule.rows as Record<string, unknown>)[key];
+        if (typeof label === 'string' && label.trim()) rows[key] = label.trim();
+      }
     }
     return {
+      ...fetch,
       type: 'html-table',
       ...(typeof rule.table === 'string' && rule.table.trim() ? { table: rule.table.trim() } : {}),
-      columns: mapped,
+      columns: normalizeColumns(rule.columns),
+      ...(rule.transpose === true ? { transpose: true } : {}),
+      ...(typeof rule.modelRow === 'string' && rule.modelRow.trim() ? { modelRow: rule.modelRow.trim() } : {}),
+      ...(Object.keys(rows).length ? { rows } : {}),
+      ...(typeof rule.variant === 'string' && rule.variant.trim() ? { variant: rule.variant.trim() } : {}),
     };
   }
+  if (rule.type === 'markdown-table') {
+    return {
+      ...fetch,
+      type: 'markdown-table',
+      ...(typeof rule.header === 'string' && rule.header.trim() ? { header: rule.header.trim() } : {}),
+      columns: normalizeColumns(rule.columns),
+    };
+  }
+  if (rule.type === 'script-table') {
+    return { ...fetch, type: 'script-table', columns: normalizeColumns(rule.columns) };
+  }
   return undefined;
+}
+
+function sameRule(a: ModelPriceRule | undefined, b: ModelPriceRule | undefined): boolean {
+  if (!a || !b) return false;
+  return JSON.stringify(normalizeRule(a)) === JSON.stringify(normalizeRule(b));
+}
+
+/** 把仍是上一版内置值的规则/地址换成当前内置值；返回是否有改动。 */
+function upgradeVendorDefaults(vendors: ModelPriceVendor[]): boolean {
+  let changed = false;
+  for (const vendor of vendors) {
+    const previous = PREVIOUS_DEFAULTS[vendor.id];
+    const next = DEFAULT_VENDORS.find((item) => item.id === vendor.id);
+    if (!previous || !next) continue;
+    if (next.source !== previous.source && vendor.source === previous.source) {
+      vendor.source = next.source;
+      changed = true;
+    }
+    if (next.rule && sameRule(vendor.rule, previous.rule)) {
+      vendor.rule = structuredClone(next.rule);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function normalizeVendor(raw: unknown): ModelPriceVendor | undefined {
@@ -297,6 +393,7 @@ export function loadModelPrices(home: string): void {
         : [];
       if (vendors.length) {
         current = { version: 1, vendors };
+        if (upgradeVendorDefaults(current.vendors)) saveModelPrices();
         return;
       }
       console.warn('[tandem] 价格表为空，按内置表重建');
@@ -422,28 +519,70 @@ export function toPrice(entry: ModelPriceEntry): Price {
   return price;
 }
 
+type HtmlTableRule = Extract<ModelPriceRule, { type: 'html-table' }>;
+type MarkdownTableRule = Extract<ModelPriceRule, { type: 'markdown-table' }>;
+type ScriptTableRule = Extract<ModelPriceRule, { type: 'script-table' }>;
+
+/** llms-full.txt 这类整站合并在读到停止标记前最多读这么多。 */
+const MAX_SCAN_BYTES = 16_000_000;
+
 /** 按厂商配置抓取定价页并解析出新价格（不写入）。失败时抛出可读原因。 */
 export async function refreshVendorPrices(id: string): Promise<ModelPricePreview> {
   const vendor = current.vendors.find((item) => item.id === id);
   if (!vendor) throw new Error('厂商不存在');
   const rule = vendor.rule ?? { type: 'json' as const, path: 'models' };
+  const fetchUrl = rule.url || vendor.source;
   let text: string;
   try {
-    const res = await fetch(vendor.source, {
+    const res = await fetch(fetchUrl, {
       headers: { 'user-agent': USER_AGENT, accept: 'application/json,text/html,text/plain,*/*' },
-      signal: AbortSignal.timeout(15_000),
+      // llms-full.txt 是整站合并的大文件，读到停止标记为止，给足时间。
+      signal: AbortSignal.timeout(rule.until ? 30_000 : 15_000),
     });
     if (!res.ok) throw new Error(`请求失败：HTTP ${res.status}`);
-    text = await res.text();
+    text = await readFetched(res, rule.until);
   } catch (err) {
     const message = (err as Error).message || '网络错误';
-    throw new Error(/abort|timeout/i.test(message) ? '请求失败：超时' : `请求失败：${message}`);
+    if (/abort|timeout/i.test(message)) throw new Error('请求失败：超时');
+    throw new Error(message.startsWith('请求失败') ? message : `请求失败：${message}`);
   }
-  const models = rule.type === 'json' ? parseJson(text, rule.path) : parseHtmlTable(text, rule);
+  if (rule.until && !text.includes(rule.until)) {
+    throw new Error(`没有读到预期内容（${rule.until}）；页面可能改版、被拦截或返回了网页`);
+  }
+  if (rule.type === 'markdown-table' && /^\s*<(!doctype\b|html\b)/i.test(text)) {
+    throw new Error('抓取地址返回的是网页（客户端渲染），没有可直接解析的文本表格');
+  }
+  const models =
+    rule.type === 'json'
+      ? parseJson(text, rule.path)
+      : rule.type === 'markdown-table'
+        ? parseMarkdownTable(text, rule)
+        : rule.type === 'script-table'
+          ? parseScriptTable(text, rule)
+          : parseHtmlTable(text, rule);
   if (!models.length) throw new Error('解析结果为空，请检查解析规则');
   // 预览按合并后的结果给差异：解析规则没覆盖的字段沿用旧值，确认后写入的就是这份结果。
   const merged = mergeVendorModels(vendor, models);
   return { vendorId: vendor.id, source: vendor.source, fetchedAt: Date.now(), changes: diffVendor(vendor, merged), models: merged };
+}
+
+/** 读到 `until` 就停止并取消读取；没有 `until` 时读完整响应。 */
+async function readFetched(res: Awaited<ReturnType<typeof fetch>>, until?: string): Promise<string> {
+  if (!until || !res.body) return res.text();
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    while (!text.includes(until)) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length >= MAX_SCAN_BYTES) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return text + decoder.decode();
 }
 
 function parseJson(text: string, rulePath?: string): ModelPriceEntry[] {
@@ -476,26 +615,288 @@ function parseJson(text: string, rulePath?: string): ModelPriceEntry[] {
 }
 
 /** 在 HTML 里按规则（table 选择器 + 列下标）解析价格行；单价单元格可写成 "$x / MTok"。 */
-function parseHtmlTable(text: string, rule: ModelPriceRule): ModelPriceEntry[] {
-  if (rule.type !== 'html-table') return [];
+function parseHtmlTable(text: string, rule: HtmlTableRule): ModelPriceEntry[] {
   const table = findTable(text, rule.table);
   if (!table) throw new Error(`没有找到价格表格（${rule.table ?? 'table'}）`);
+  if (rule.transpose) return parseTransposedTable(table, rule);
   const columns = rule.columns ?? {};
   const out: ModelPriceEntry[] = [];
   for (const row of table.matchAll(/<tr[\s\S]*?<\/tr>/gi)) {
     const cells = [...row[0].matchAll(/<t[dh][\s\S]*?<\/t[dh]>/gi)].map((cell) => plainText(cell[0]));
     const model = cells[columns.model ?? 0] ?? '';
     if (!model || !/^[A-Za-z][\w.\-/:]*$/.test(model)) continue;
-    const entry = normalizeEntry({
-      model,
-      input: priceOf(cells[columns.input ?? 1]),
-      output: priceOf(cells[columns.output ?? 2]),
-      cacheRead: columns.cacheRead !== undefined ? priceOf(cells[columns.cacheRead]) : undefined,
-      cacheWrite5m: columns.cacheWrite !== undefined ? priceOf(cells[columns.cacheWrite]) : undefined,
-    });
+    const entry = normalizeEntry({ model, ...ratesFromCells(cells, columns) });
     if (entry) out.push(entry);
   }
   return out;
+}
+
+/**
+ * 转置表：型号是列、价格项是行。先把 colspan/rowspan 展开成完整网格，
+ * 再按 `rows` 的行文字取每个价格项；同一项有多行时用 `variant` 选（如 PEAK）。
+ */
+function parseTransposedTable(table: string, rule: HtmlTableRule): ModelPriceEntry[] {
+  const grid = tableGrid(table);
+  const marker = (rule.modelRow ?? 'MODEL').toLowerCase();
+  let headerIndex = -1;
+  let markerIndex = -1;
+  for (let i = 0; i < grid.length; i++) {
+    const row = grid[i] ?? [];
+    const index = row.findIndex((cell) => cell.trim().toLowerCase() === marker);
+    if (index >= 0 && row.slice(index + 1).some((cell) => isModelName(cell))) {
+      headerIndex = i;
+      markerIndex = index;
+      break;
+    }
+  }
+  if (headerIndex < 0) throw new Error(`没有找到型号行（${rule.modelRow ?? 'MODEL'}）`);
+  const header = grid[headerIndex] ?? [];
+  const modelColumns: Array<{ column: number; model: string }> = [];
+  for (let column = markerIndex + 1; column < header.length; column++) {
+    const model = (header[column] ?? '').trim();
+    if (!model || !isModelName(model) || model.toLowerCase() === marker) continue;
+    if (modelColumns.some((item) => item.model === model.toLowerCase())) continue;
+    modelColumns.push({ column, model: model.toLowerCase() });
+  }
+  if (!modelColumns.length) throw new Error('型号行里没有型号名');
+  const labels = rule.rows ?? {};
+  const rates = new Map<string, Partial<UnitPrice>>();
+  for (const row of grid) {
+    if (!row) continue;
+    const hasVariant = !rule.variant || row.some((cell) => cell.trim().toLowerCase() === rule.variant!.toLowerCase());
+    if (!hasVariant) continue;
+    for (const key of ROW_KEYS) {
+      const label = labels[key];
+      if (!label || !row.some((cell) => cell.toLowerCase().includes(label.toLowerCase()))) continue;
+      for (const { column, model } of modelColumns) {
+        const value = priceOf(row[column]);
+        if (value === undefined) continue;
+        const currentRates = rates.get(model) ?? {};
+        if (key === 'cacheWrite') currentRates.cacheWrite5m = value;
+        else if (key === 'cacheWrite1h') currentRates.cacheWrite1h = value;
+        else currentRates[key] = value;
+        rates.set(model, currentRates);
+      }
+    }
+  }
+  return [...rates].map(([model, values]) => normalizeEntry({ model, ...values })).filter((entry): entry is ModelPriceEntry => !!entry);
+}
+
+/** 展开 colspan / rowspan 后的单元格网格；同一格的合并区域都填上该格文字。 */
+function tableGrid(table: string): string[][] {
+  const grid: string[][] = [];
+  const occupied = new Set<string>();
+  let rowIndex = 0;
+  for (const row of table.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)) {
+    let column = 0;
+    for (const cell of row[0].matchAll(/<t[dh]\b([^>]*)>([\s\S]*?)<\/t[dh]>/gi)) {
+      while (occupied.has(`${rowIndex},${column}`)) column++;
+      const attrs = cell[1] ?? '';
+      const colspan = Math.max(1, Number(attrs.match(/colspan=["']?(\d+)/i)?.[1] ?? 1));
+      const rowspan = Math.max(1, Number(attrs.match(/rowspan=["']?(\d+)/i)?.[1] ?? 1));
+      const value = plainText(cell[2] ?? '');
+      for (let dr = 0; dr < rowspan; dr++) {
+        for (let dc = 0; dc < colspan; dc++) {
+          const r = rowIndex + dr;
+          const c = column + dc;
+          grid[r] = grid[r] ?? [];
+          grid[r]![c] = value;
+          occupied.add(`${r},${c}`);
+        }
+      }
+      column += colspan;
+    }
+    rowIndex++;
+  }
+  return grid;
+}
+
+/** Markdown 表格：按表头文字选表，行里的「over N tokens」档合并为该型号的 longPrompt。 */
+function parseMarkdownTable(text: string, rule: MarkdownTableRule): ModelPriceEntry[] {
+  const lines = text.split(/\r?\n/);
+  let start = -1;
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i]!.trim();
+    if (!line.startsWith('|')) continue;
+    if (rule.header && !line.toLowerCase().includes(rule.header.toLowerCase())) continue;
+    const next = lines[i + 1] ?? '';
+    if (!/^\s*\|?[\s:|-]+\|?\s*$/.test(next) || !next.includes('-')) continue;
+    start = i;
+    break;
+  }
+  if (start < 0) throw new Error(`没有找到 Markdown 价格表格${rule.header ? `（表头含「${rule.header}」）` : ''}`);
+  const rows = new Map<string, ModelPriceEntry>();
+  const longs = new Map<string, { threshold: number; rates: Partial<UnitPrice> }>();
+  for (let i = start + 2; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (!line.trim().startsWith('|')) break;
+    const cells = splitMarkdownRow(line);
+    const rawLabel = cells[rule.columns.model ?? 0] ?? '';
+    if (!rawLabel || cells.every((cell) => /^:?-{2,}:?$/.test(cell.trim()))) continue;
+    const label = markdownText(rawLabel);
+    const model = markdownModelName(label);
+    if (!model) continue;
+    const values = ratesFromCells(cells, rule.columns);
+    const tier = label.match(/over\s+([\d,]+)\s+tokens?/i);
+    const threshold = tier ? Number(tier[1]!.replace(/,/g, '')) : Number.NaN;
+    if (Number.isFinite(threshold)) {
+      longs.set(model, { threshold, rates: values });
+      continue;
+    }
+    const entry = normalizeEntry({ model, ...values });
+    if (entry) rows.set(model, entry);
+  }
+  for (const [model, long] of longs) {
+    if (long.rates.input === undefined || long.rates.output === undefined) continue;
+    const longRates = long.rates as UnitPrice;
+    const entry = rows.get(model);
+    if (entry) entry.longPrompt = { threshold: long.threshold, rates: longRates };
+    else {
+      // 只有高价档时仍记成分段价，避免把它当成所有请求的单价。
+      const base = normalizeEntry({ model, ...longRates });
+      if (base) rows.set(model, { ...base, longPrompt: { threshold: long.threshold, rates: longRates } });
+    }
+  }
+  return [...rows.values()];
+}
+
+function splitMarkdownRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function markdownText(cell: string): string {
+  return cell
+    .replace(/<sup\b[\s\S]*?<\/sup>/gi, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** "Claude Sonnet 4.5 (for prompts up to …)" → "claude-sonnet-4-5"。 */
+function markdownModelName(label: string): string {
+  const name = label.split('(')[0]!.trim();
+  if (!/^[A-Za-z]/.test(name)) return '';
+  return name
+    .toLowerCase()
+    .replace(/[\s.]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/** 页面脚本里以 `rows:[[…]]` 内嵌的表格（Mintlify DocTable）：取每行里的型号与单价字面量。 */
+function parseScriptTable(text: string, rule: ScriptTableRule): ModelPriceEntry[] {
+  const rows = new Map<string, ModelPriceEntry>();
+  for (const payload of embeddedRows(text)) {
+    for (const element of splitTopLevel(payload, ',')) {
+      if (!element.trim().startsWith('[')) continue;
+      const cells: string[] = [];
+      for (const match of element.matchAll(/`([^`]*)`|'([^']*)'|"([^"]*)"/g)) {
+        const value = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+        if (!value || value.startsWith('/')) continue;
+        if (isScriptModelToken(value) || isPriceText(value)) cells.push(value);
+      }
+      if (cells.length < 2 || !isScriptModelToken(cells[0]!)) continue;
+      const entry = normalizeEntry({ model: cells[0]!, ...ratesFromCells(cells, rule.columns) });
+      if (entry) rows.set(entry.model, entry);
+    }
+  }
+  if (!rows.size) throw new Error('没有解析到价格行，请检查解析规则');
+  return [...rows.values()];
+}
+
+/** 找出页面脚本里所有 `rows:[…]` 数组的内容。 */
+function embeddedRows(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(/rows:\s*\[/g)) {
+    const open = (match.index ?? 0) + match[0].length - 1;
+    const close = matchingBracket(text, open);
+    if (close > open) out.push(text.slice(open + 1, close));
+  }
+  return out;
+}
+
+function matchingBracket(text: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '`' || ch === '"' || ch === "'") {
+      const quote = ch;
+      i++;
+      while (i < text.length && text[i] !== quote) {
+        if (text[i] === '\\') i++;
+        i++;
+      }
+      continue;
+    }
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (!depth) return i;
+    }
+  }
+  return -1;
+}
+
+function splitTopLevel(text: string, separator: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '`' || ch === '"' || ch === "'") {
+      const quote = ch;
+      i++;
+      while (i < text.length && text[i] !== quote) {
+        if (text[i] === '\\') i++;
+        i++;
+      }
+      continue;
+    }
+    if (ch === '[' || ch === '(' || ch === '{') depth++;
+    else if (ch === ']' || ch === ')' || ch === '}') depth--;
+    else if (ch === separator && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out;
+}
+
+function isScriptModelToken(value: string): boolean {
+  return /^[A-Za-z][\w.-]*$/.test(value) && !isPriceText(value);
+}
+
+function isPriceText(value: string): boolean {
+  return /^[\$\u00a5]\s*[\d.,]+/.test(value);
+}
+
+function isModelName(value: string): boolean {
+  return /^[A-Za-z][\w.\-/:]*$/.test(value);
+}
+
+/** 按列映射从单元格里取单价（cacheWrite 指 5m）。 */
+function ratesFromCells(cells: string[], columns: ModelPriceColumns): Partial<UnitPrice> {
+  const rates: Partial<UnitPrice> = {};
+  for (const key of COLUMN_KEYS) {
+    if (key === 'model') continue;
+    const index = columns[key];
+    if (index === undefined) continue;
+    const value = priceOf(cells[index]);
+    if (value === undefined) continue;
+    if (key === 'cacheWrite') rates.cacheWrite5m = value;
+    else if (key === 'cacheWrite1h') rates.cacheWrite1h = value;
+    else rates[key] = value;
+  }
+  return rates;
 }
 
 /** 只接受 table 选择器：`table`、`table#id`、`#id`、`table.class`。 */
@@ -514,6 +915,8 @@ function findTable(text: string, selector?: string): string | undefined {
 
 function plainText(html: string): string {
   return html
+    // sup 是脚注编号（如 deepseek-flash<sup>(1)</sup>），不能混进型号名。
+    .replace(/<sup\b[\s\S]*?<\/sup>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')

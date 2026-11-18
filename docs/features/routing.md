@@ -66,7 +66,7 @@
 
 价格只有两个来源：官方价格表，或分组里为某个模型设置的自定义单价。官方价格表由 `packages/server/src/model-prices.ts` 唯一实现，数据存在工作站数据目录的 `model-prices.json`（首启用内置表初始化）；设置 →「模型价格」按厂商列出四种单价、分段价、来源链接与更新时间。官方价只命中同名型号，或同一型号加日期后缀（`-YYYYMMDD` / `@YYYYMMDD`）与 `-latest`，不在型号之间借价；没列出的型号视为未知单价，菜单与用量卡显示「未知单价 / 该型号尚未收录官方价」，并给出去该模型所在分组的自定义单价编辑处的入口。
 - 每条官方价含输入、输出、缓存读、缓存写 5m / 1h 单价；计费按未命中输入、输出、`cache_read`、`cache_creation`（5m/1h 拆分，只给总数时按 5m）分别乘价（Haiku 5.5 提示 token 超过 100K 切高价档）。实际价 = 官方价 × 分组倍率（倍率只属于分组，缺省 1）；自定义单价不乘倍率。界面只展示官方价与倍率，不展示乘出来的单价。历史花费按记账时单价保存，调价不改历史（MODEL-7）。
-- 每个厂商的定价页地址与解析规则可在「模型价格」页配置（JSON `models` 数组，或 `{ "type": "html-table", "table": "<选择器>", "columns": {…} }`）；「刷新」由工作站进程抓取定价页，先给差异预览，确认后写入；失败如实显示原因并保留旧价。
+- 每个厂商的定价页地址与解析规则可在「模型价格」页配置（可编辑 JSON）；「刷新」由工作站进程抓取、先预览差异、确认后写入，失败如实显示原因并保留旧价。规则种类：`json`（`path` 指向数组）；`html-table`（`table` 选择器 + `columns` 列下标；转置表加 `transpose` / `modelRow` / `rows`，同一项多行用 `variant` 选，如 DeepSeek 取 PEAK）；`markdown-table`（按 `header` 选表，型号取首列、点与空白转连字符，`over N tokens` 档记为 `longPrompt`，如 Anthropic 读 `llms-full.txt` 的缓存价格表）；`script-table`（页面脚本里 `rows:[[…]]` 内嵌的表格，如 Kimi）。规则可带 `url`（实际抓取地址，来源链接仍用厂商地址）与 `until`（读到即停，避免下载整站）。默认真实源：Anthropic → `platform.claude.com/llms-full.txt`；DeepSeek → 官方 pricing 转置表；GLM → `docs.z.ai`；Kimi → `platform.moonshot.ai`（美元站）。Qwen 模型页由客户端渲染，默认规则暂未解析到价格，刷新会如实提示没有表格。
 
 ## 思考强度
 
