@@ -36,6 +36,11 @@ const steps = [
     skip: skipDocs,
   },
   {
+    name: 'case',
+    command: process.execPath,
+    args: ['scripts/case-check.mjs'],
+  },
+  {
     name: 'product',
     command: process.execPath,
     args: ['scripts/product-check.mjs'],

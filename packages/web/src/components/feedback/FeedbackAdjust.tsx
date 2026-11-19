@@ -59,7 +59,7 @@ import {
   type AdjustOp,
   type AdjustSummary,
   type AdjustTargetMeta,
-} from './feedbackAdjust'
+} from './feedbackAdjustUtils'
 import {
   applyVariant,
   captureBoxStyle,

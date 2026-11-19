@@ -10,7 +10,7 @@ import { BADGE_TONE_CLASS } from '../ui/Badge'
 import { BUTTON_VARIANT_CLASS } from '../ui/Button'
 import type { AdjustChange } from '../../lib/feedback'
 import { ADJUST_ICONS } from './adjustIcons.generated'
-import { iconSvgFor, type AdjustOp } from './feedbackAdjust'
+import { iconSvgFor, type AdjustOp } from './feedbackAdjustUtils'
 
 export interface BoxStyle {
   width: string

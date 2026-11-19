@@ -28,7 +28,7 @@ import {
   type AdjustInsertedItem,
   type AdjustInsertedRow,
   type AdjustOp,
-} from './feedbackAdjust'
+} from './feedbackAdjustUtils'
 import { UI_ATTR } from './feedbackModeHelpers'
 
 // 调整工具是调试版浮层（Radix 负责定位），沿用反馈工具原有的紧凑面板样式。

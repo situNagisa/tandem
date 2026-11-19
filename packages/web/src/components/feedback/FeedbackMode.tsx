@@ -35,7 +35,7 @@ import {
   type FeedbackTool,
   type VerifyState,
 } from './feedbackModeHelpers'
-import { summarizeAdjust } from './feedbackAdjust'
+import { summarizeAdjust } from './feedbackAdjustUtils'
 import { useFeedbackCapture } from './useFeedbackCapture'
 import { useFeedbackEditing } from './useFeedbackEditing'
 import { useFeedbackExport } from './useFeedbackExport'

@@ -9,7 +9,7 @@ import { Button, IconButton, type ButtonVariant } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { Input } from '../ui/Controls'
 import { ListRow } from '../ui/ListRow'
-import type { AdjustInsertedItem, AdjustInsertOption } from './feedbackAdjust'
+import type { AdjustInsertedItem, AdjustInsertOption } from './feedbackAdjustUtils'
 
 function RowView({
   component,
